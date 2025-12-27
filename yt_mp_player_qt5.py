@@ -6,6 +6,7 @@ from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QProcess
 from PyQt5.QtGui import QKeySequence
 from youtubesearchpython import VideosSearch
+from piped_api import PipedClient
 
 # --- Hilo de Búsqueda (Worker) ---
 # Separamos la búsqueda de la UI para no bloquear el framebuffer
@@ -24,6 +25,45 @@ class SearchThread(QThread):
         except Exception as e:
             print(f"Error en búsqueda: {e}")
             self.results_ready.emit([])
+
+
+# --- Hilo para obtener stream via Piped API ---
+class StreamThread(QThread):
+    stream_ready = pyqtSignal(str, dict)  # url, video_info
+    stream_error = pyqtSignal(str)  # error message
+
+    PIPED_INSTANCES = [
+        'https://pipedapi.kavin.rocks',
+        'https://api.piped.yt',
+        'https://pipedapi.adminforge.de',
+    ]
+
+    def __init__(self, video_info):
+        super().__init__()
+        self.video_info = video_info
+
+    def run(self):
+        video_id = self.extract_video_id(self.video_info['link'])
+        for instance in self.PIPED_INSTANCES:
+            try:
+                client = PipedClient(base_url=instance)
+                video = client.get_video(video_id)
+                streams = video.get_streams('audio')
+                if streams:
+                    self.stream_ready.emit(streams[0].url, self.video_info)
+                    return
+            except Exception:
+                continue
+        self.stream_error.emit("No se pudo obtener stream de ningún servidor Piped")
+
+    def extract_video_id(self, url):
+        """Extract video ID from youtube.com/watch?v=XXX or youtu.be/XXX"""
+        if 'youtu.be/' in url:
+            return url.split('youtu.be/')[1].split('?')[0]
+        if 'v=' in url:
+            return url.split('v=')[1].split('&')[0]
+        return url
+
 
 # --- Aplicación Principal ---
 class BBBPlayer(QWidget):
@@ -335,33 +375,46 @@ Ctrl+Q - Salir
 
     def play_video_from_info(self, video_info):
         """Play a video from its info dict."""
-        link = video_info['link']
-
         self.stop_music()
 
         # Set loading state
         self.current_title = video_info['title']
         self.is_loading = True
         self.playback_started = False
-        self.status_label.setText(f"⏳ Cargando: {self.current_title[:50]}...")
+        self.status_label.setText(f"⏳ Obteniendo stream: {self.current_title[:50]}...")
         self.status_label.setStyleSheet("font-size: 16px; color: orange;")
         self.progress_bar.setValue(0)
         self.progress_bar.setRange(0, 0)  # Indeterminate mode (loading animation)
         self.time_label.setText("Cargando...")
 
-        # Use QProcess to detect when playback ends
+        # Get stream URL via Piped API (bypasses YouTube bot detection)
+        self.stream_thread = StreamThread(video_info)
+        self.stream_thread.stream_ready.connect(self.start_playback)
+        self.stream_thread.stream_error.connect(self.on_stream_error)
+        self.stream_thread.start()
+
+    def start_playback(self, stream_url, video_info):
+        """Start mpv with the direct stream URL from Piped."""
         self.current_process = QProcess(self)
         self.current_process.finished.connect(self.on_playback_finished)
         self.current_process.readyReadStandardError.connect(self.on_mpv_output)
         self.current_process.setProcessChannelMode(QProcess.MergedChannels)
         self.current_process.readyReadStandardOutput.connect(self.on_mpv_output)
-        # mpv options: --term-status-msg shows time, --msg-level makes it verbose enough
         self.current_process.start('mpv', [
             '--no-video',
             '--term-osd-bar=no',
             '--msg-level=all=status',
-            link
+            stream_url
         ])
+
+    def on_stream_error(self, error_msg):
+        """Handle stream fetch errors from Piped API."""
+        self.is_loading = False
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        self.time_label.setText("--:-- / --:--")
+        self.status_label.setText(f"Error: {error_msg}")
+        self.status_label.setStyleSheet("font-size: 16px; color: #d9534f;")
 
     def on_mpv_output(self):
         """Parse mpv output to extract playback progress."""
