@@ -1,8 +1,8 @@
 import sys
-import subprocess
-from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, 
-                             QLineEdit, QPushButton, QListWidget, QLabel)
-from PyQt5.QtCore import Qt, QThread, pyqtSignal
+from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
+                             QLineEdit, QPushButton, QListWidget, QLabel, QShortcut)
+from PyQt5.QtCore import Qt, QThread, pyqtSignal, QProcess
+from PyQt5.QtGui import QKeySequence
 from youtubesearchpython import VideosSearch
 
 # --- Hilo de Búsqueda (Worker) ---
@@ -34,46 +34,247 @@ class BBBPlayer(QWidget):
         
         self.current_process = None
         self.video_data_list = []
+        self.queue = []  # Queue of video info dicts
 
         self.init_ui()
+        self.setup_shortcuts()
 
     def init_ui(self):
-        layout = QVBoxLayout()
-        
+        main_layout = QHBoxLayout()
+
+        # === LEFT PANEL (Search & Results) ===
+        left_panel = QVBoxLayout()
+
         # 1. Barra de Búsqueda
         search_layout = QHBoxLayout()
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Buscar en YouTube...")
         self.search_input.setStyleSheet("font-size: 20px; padding: 5px;")
         self.search_input.returnPressed.connect(self.start_search)
-        
+
         btn_search = QPushButton("Buscar")
         btn_search.setStyleSheet("font-size: 20px; padding: 10px;")
         btn_search.clicked.connect(self.start_search)
-        
+
         search_layout.addWidget(self.search_input)
         search_layout.addWidget(btn_search)
-        
+
         # 2. Lista de Resultados
         self.list_widget = QListWidget()
         self.list_widget.setStyleSheet("font-size: 18px;")
         self.list_widget.itemDoubleClicked.connect(self.play_video)
-        
+
         # 3. Controles / Estado
         self.status_label = QLabel("Listo")
         self.status_label.setStyleSheet("font-size: 16px; color: gray;")
-        
+
         btn_stop = QPushButton("Detener")
         btn_stop.setStyleSheet("background-color: #d9534f; color: white; font-size: 20px; font-weight: bold;")
         btn_stop.clicked.connect(self.stop_music)
 
-        # Añadir al layout principal
-        layout.addLayout(search_layout)
-        layout.addWidget(self.list_widget)
-        layout.addWidget(self.status_label)
-        layout.addWidget(btn_stop)
+        left_panel.addLayout(search_layout)
+        left_panel.addWidget(self.list_widget)
+        left_panel.addWidget(self.status_label)
+        left_panel.addWidget(btn_stop)
 
-        self.setLayout(layout)
+        # === RIGHT PANEL (Shortcuts & Queue) ===
+        right_panel = QVBoxLayout()
+
+        # Keyboard shortcuts help
+        shortcuts_text = """
+<b>ATAJOS DE TECLADO</b><br><br>
+<b>Navegación:</b><br>
+↑/↓, j/k - Navegar lista<br>
+g - Ir al inicio<br>
+G - Ir al final<br><br>
+<b>Reproducción:</b><br>
+Enter/Space - Reproducir<br>
+e - Encolar selección<br>
+s/Esc - Detener<br>
+n - Siguiente en cola<br><br>
+<b>Cola:</b><br>
+c - Limpiar cola<br>
+x - Quitar de cola<br><br>
+<b>Otros:</b><br>
+/ o Ctrl+F - Buscar<br>
+Tab - Cambiar foco<br>
+Ctrl+Q - Salir
+"""
+        shortcuts_label = QLabel(shortcuts_text)
+        shortcuts_label.setStyleSheet("""
+            font-size: 14px;
+            background-color: #2d2d2d;
+            color: #cccccc;
+            padding: 15px;
+            border-radius: 5px;
+        """)
+        shortcuts_label.setWordWrap(True)
+        shortcuts_label.setAlignment(Qt.AlignTop)
+
+        # Queue section
+        queue_title = QLabel("<b>COLA DE REPRODUCCIÓN</b>")
+        queue_title.setStyleSheet("font-size: 16px; color: #5cb85c; margin-top: 10px;")
+
+        self.queue_widget = QListWidget()
+        self.queue_widget.setStyleSheet("font-size: 14px;")
+        self.queue_widget.setMaximumHeight(200)
+
+        right_panel.addWidget(shortcuts_label)
+        right_panel.addWidget(queue_title)
+        right_panel.addWidget(self.queue_widget)
+        right_panel.addStretch()
+
+        # === Combine panels ===
+        left_container = QWidget()
+        left_container.setLayout(left_panel)
+
+        right_container = QWidget()
+        right_container.setLayout(right_panel)
+        right_container.setFixedWidth(250)
+
+        main_layout.addWidget(left_container, stretch=1)
+        main_layout.addWidget(right_container)
+
+        self.setLayout(main_layout)
+
+        # Set focus to list after UI is ready
+        self.list_widget.setFocus()
+
+    def setup_shortcuts(self):
+        """Configure keyboard shortcuts for full keyboard control."""
+        # Escape - Stop playback
+        QShortcut(QKeySequence(Qt.Key_Escape), self, self.stop_music)
+
+        # / or Ctrl+F - Focus search box
+        QShortcut(QKeySequence('/'), self, self.focus_search)
+        QShortcut(QKeySequence('Ctrl+F'), self, self.focus_search)
+
+        # Ctrl+Q - Quit application
+        QShortcut(QKeySequence('Ctrl+Q'), self, self.close)
+
+        # Space - Play selected (when list has focus)
+        QShortcut(QKeySequence(Qt.Key_Space), self, self.play_selected)
+
+        # Enter/Return in list - Play selected
+        self.list_widget.itemActivated.connect(self.play_video)
+
+        # Queue shortcuts
+        QShortcut(QKeySequence('E'), self, self.enqueue_selected)
+        QShortcut(QKeySequence('N'), self, self.play_next)
+        QShortcut(QKeySequence('C'), self, self.clear_queue)
+        QShortcut(QKeySequence('X'), self, self.remove_from_queue)
+
+    def focus_search(self):
+        """Focus the search input and select all text."""
+        self.search_input.setFocus()
+        self.search_input.selectAll()
+
+    def focus_list(self):
+        """Focus the results list."""
+        self.list_widget.setFocus()
+        if self.list_widget.count() > 0 and self.list_widget.currentRow() < 0:
+            self.list_widget.setCurrentRow(0)
+
+    def play_selected(self):
+        """Play the currently selected item in the list."""
+        current_item = self.list_widget.currentItem()
+        if current_item:
+            self.play_video(current_item)
+
+    # === Queue Methods ===
+    def enqueue_selected(self):
+        """Add the currently selected item to the queue."""
+        if self.search_input.hasFocus():
+            return
+        current_item = self.list_widget.currentItem()
+        if current_item:
+            index = self.list_widget.row(current_item)
+            video_info = self.video_data_list[index]
+            self.queue.append(video_info)
+            self.update_queue_display()
+            self.status_label.setText(f"Encolado: {video_info['title'][:40]}...")
+
+    def update_queue_display(self):
+        """Update the queue list widget."""
+        self.queue_widget.clear()
+        for i, vid in enumerate(self.queue):
+            title = vid['title'][:35] + "..." if len(vid['title']) > 35 else vid['title']
+            self.queue_widget.addItem(f"{i+1}. {title}")
+
+    def play_next(self):
+        """Play the next item in the queue."""
+        if self.search_input.hasFocus():
+            return
+        if self.queue:
+            video_info = self.queue.pop(0)
+            self.update_queue_display()
+            self.play_video_from_info(video_info)
+        else:
+            self.status_label.setText("Cola vacía")
+
+    def clear_queue(self):
+        """Clear the entire queue."""
+        if self.search_input.hasFocus():
+            return
+        self.queue.clear()
+        self.update_queue_display()
+        self.status_label.setText("Cola limpiada")
+
+    def remove_from_queue(self):
+        """Remove the selected item from the queue."""
+        if self.search_input.hasFocus():
+            return
+        current_row = self.queue_widget.currentRow()
+        if current_row >= 0 and current_row < len(self.queue):
+            removed = self.queue.pop(current_row)
+            self.update_queue_display()
+            self.status_label.setText(f"Quitado de cola: {removed['title'][:30]}...")
+
+    def keyPressEvent(self, event):
+        """Handle key press events for navigation."""
+        key = event.key()
+
+        # Escape - if in search, go back to list; otherwise stop music
+        if key == Qt.Key_Escape:
+            if self.search_input.hasFocus():
+                self.focus_list()
+                return
+            # Let the shortcut handle stop_music
+
+        # Tab - toggle between search and list
+        if key == Qt.Key_Tab:
+            if self.search_input.hasFocus():
+                self.focus_list()
+            else:
+                self.focus_search()
+            return
+
+        # J/K for vim-style navigation (only when not in search)
+        if key == Qt.Key_J and not self.search_input.hasFocus():
+            current_row = self.list_widget.currentRow()
+            if current_row < self.list_widget.count() - 1:
+                self.list_widget.setCurrentRow(current_row + 1)
+            return
+        elif key == Qt.Key_K and not self.search_input.hasFocus():
+            current_row = self.list_widget.currentRow()
+            if current_row > 0:
+                self.list_widget.setCurrentRow(current_row - 1)
+            return
+
+        # G - Go to top, Shift+G - Go to bottom (only when not in search)
+        if key == Qt.Key_G and not self.search_input.hasFocus():
+            if event.modifiers() & Qt.ShiftModifier:
+                self.list_widget.setCurrentRow(self.list_widget.count() - 1)
+            else:
+                self.list_widget.setCurrentRow(0)
+            return
+
+        # S - Stop music
+        if key == Qt.Key_S and not self.search_input.hasFocus():
+            self.stop_music()
+            return
+
+        super().keyPressEvent(event)
 
     def start_search(self):
         query = self.search_input.text()
@@ -98,20 +299,35 @@ class BBBPlayer(QWidget):
     def play_video(self, item):
         index = self.list_widget.row(item)
         video_info = self.video_data_list[index]
+        self.play_video_from_info(video_info)
+
+    def play_video_from_info(self, video_info):
+        """Play a video from its info dict."""
         link = video_info['link']
-        
+
         self.stop_music()
-        
+
         self.status_label.setText(f"Reproduciendo: {video_info['title']}")
-        
-        # Ejecutar mpv sin video (audio only)
-        # --no-video reduce carga de CPU drásticamente
-        cmd = ['mpv', '--no-video', link]
-        self.current_process = subprocess.Popen(cmd)
+
+        # Use QProcess to detect when playback ends
+        self.current_process = QProcess(self)
+        self.current_process.finished.connect(self.on_playback_finished)
+        self.current_process.start('mpv', ['--no-video', link])
+
+    def on_playback_finished(self):
+        """Called when mpv finishes playing."""
+        self.current_process = None
+        if self.queue:
+            # Auto-play next in queue
+            self.play_next()
+        else:
+            self.status_label.setText("Listo")
 
     def stop_music(self):
         if self.current_process:
+            self.current_process.finished.disconnect()
             self.current_process.terminate()
+            self.current_process.waitForFinished(1000)
             self.current_process = None
             self.status_label.setText("Detenido")
 
