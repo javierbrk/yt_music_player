@@ -1,6 +1,8 @@
 import sys
+import re
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
-                             QLineEdit, QPushButton, QListWidget, QLabel, QShortcut)
+                             QLineEdit, QPushButton, QListWidget, QLabel, QShortcut,
+                             QProgressBar)
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QProcess
 from PyQt5.QtGui import QKeySequence
 from youtubesearchpython import VideosSearch
@@ -35,6 +37,9 @@ class BBBPlayer(QWidget):
         self.current_process = None
         self.video_data_list = []
         self.queue = []  # Queue of video info dicts
+        self.current_title = ""
+        self.is_loading = False
+        self.playback_started = False
 
         self.init_ui()
         self.setup_shortcuts()
@@ -68,6 +73,32 @@ class BBBPlayer(QWidget):
         self.status_label = QLabel("Listo")
         self.status_label.setStyleSheet("font-size: 16px; color: gray;")
 
+        # Progress bar and time display
+        progress_layout = QHBoxLayout()
+
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setStyleSheet("""
+            QProgressBar {
+                border: 1px solid #444;
+                border-radius: 3px;
+                text-align: center;
+                height: 20px;
+            }
+            QProgressBar::chunk {
+                background-color: #5cb85c;
+            }
+        """)
+        self.progress_bar.setFormat("")
+
+        self.time_label = QLabel("--:-- / --:--")
+        self.time_label.setStyleSheet("font-size: 14px; color: #888; min-width: 100px;")
+        self.time_label.setAlignment(Qt.AlignCenter)
+
+        progress_layout.addWidget(self.progress_bar)
+        progress_layout.addWidget(self.time_label)
+
         btn_stop = QPushButton("Detener")
         btn_stop.setStyleSheet("background-color: #d9534f; color: white; font-size: 20px; font-weight: bold;")
         btn_stop.clicked.connect(self.stop_music)
@@ -75,6 +106,7 @@ class BBBPlayer(QWidget):
         left_panel.addLayout(search_layout)
         left_panel.addWidget(self.list_widget)
         left_panel.addWidget(self.status_label)
+        left_panel.addLayout(progress_layout)
         left_panel.addWidget(btn_stop)
 
         # === RIGHT PANEL (Shortcuts & Queue) ===
@@ -307,16 +339,81 @@ Ctrl+Q - Salir
 
         self.stop_music()
 
-        self.status_label.setText(f"Reproduciendo: {video_info['title']}")
+        # Set loading state
+        self.current_title = video_info['title']
+        self.is_loading = True
+        self.playback_started = False
+        self.status_label.setText(f"⏳ Cargando: {self.current_title[:50]}...")
+        self.status_label.setStyleSheet("font-size: 16px; color: orange;")
+        self.progress_bar.setValue(0)
+        self.progress_bar.setRange(0, 0)  # Indeterminate mode (loading animation)
+        self.time_label.setText("Cargando...")
 
         # Use QProcess to detect when playback ends
         self.current_process = QProcess(self)
         self.current_process.finished.connect(self.on_playback_finished)
-        self.current_process.start('mpv', ['--no-video', link])
+        self.current_process.readyReadStandardError.connect(self.on_mpv_output)
+        self.current_process.setProcessChannelMode(QProcess.MergedChannels)
+        self.current_process.readyReadStandardOutput.connect(self.on_mpv_output)
+        # mpv options: --term-status-msg shows time, --msg-level makes it verbose enough
+        self.current_process.start('mpv', [
+            '--no-video',
+            '--term-osd-bar=no',
+            '--msg-level=all=status',
+            link
+        ])
+
+    def on_mpv_output(self):
+        """Parse mpv output to extract playback progress."""
+        if not self.current_process:
+            return
+
+        data = self.current_process.readAllStandardOutput().data().decode('utf-8', errors='ignore')
+
+        # mpv outputs time like: "AV: 00:01:23 / 00:04:56" or "A: 00:01:23 / 00:04:56"
+        # Also matches "(XX%)" percentage
+        time_match = re.search(r'A[V]?:\s*(\d+:\d+:\d+|\d+:\d+)\s*/\s*(\d+:\d+:\d+|\d+:\d+)', data)
+
+        if time_match:
+            # Playback has started
+            if self.is_loading:
+                self.is_loading = False
+                self.playback_started = True
+                self.status_label.setText(f"▶ {self.current_title[:50]}")
+                self.status_label.setStyleSheet("font-size: 16px; color: #5cb85c;")
+                self.progress_bar.setRange(0, 100)  # Exit indeterminate mode
+
+            current_time = time_match.group(1)
+            total_time = time_match.group(2)
+
+            # Update time label
+            self.time_label.setText(f"{current_time} / {total_time}")
+
+            # Calculate and update progress bar
+            current_secs = self.time_to_seconds(current_time)
+            total_secs = self.time_to_seconds(total_time)
+
+            if total_secs > 0:
+                percent = int((current_secs / total_secs) * 100)
+                self.progress_bar.setValue(percent)
+
+    def time_to_seconds(self, time_str):
+        """Convert time string (MM:SS or HH:MM:SS) to seconds."""
+        parts = time_str.split(':')
+        if len(parts) == 2:
+            return int(parts[0]) * 60 + int(parts[1])
+        elif len(parts) == 3:
+            return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
+        return 0
 
     def on_playback_finished(self):
         """Called when mpv finishes playing."""
         self.current_process = None
+        self.is_loading = False
+        self.progress_bar.setValue(0)
+        self.progress_bar.setRange(0, 100)
+        self.time_label.setText("--:-- / --:--")
+        self.status_label.setStyleSheet("font-size: 16px; color: gray;")
         if self.queue:
             # Auto-play next in queue
             self.play_next()
@@ -329,7 +426,12 @@ Ctrl+Q - Salir
             self.current_process.terminate()
             self.current_process.waitForFinished(1000)
             self.current_process = None
-            self.status_label.setText("Detenido")
+        self.is_loading = False
+        self.progress_bar.setValue(0)
+        self.progress_bar.setRange(0, 100)
+        self.time_label.setText("--:-- / --:--")
+        self.status_label.setText("Detenido")
+        self.status_label.setStyleSheet("font-size: 16px; color: gray;")
 
 if __name__ == '__main__':
     # Pasar argumentos al QApplication es importante para recibir flags como -platform
