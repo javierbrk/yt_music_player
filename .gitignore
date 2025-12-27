@@ -1,0 +1,14 @@
+# Cookies (contienen credenciales - NO subir a GitHub)
+cookies.txt
+*.cookies
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+venv/
+.venv/
+
+# IDE
+.vscode/
+.idea/

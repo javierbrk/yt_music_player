@@ -1,17 +1,22 @@
 import sys
 import re
+import os
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
                              QLineEdit, QPushButton, QListWidget, QLabel, QShortcut,
-                             QProgressBar)
+                             QProgressBar, QPlainTextEdit)
+from datetime import datetime
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QProcess
 from PyQt5.QtGui import QKeySequence
 from youtubesearchpython import VideosSearch
-from piped_api import PipedClient
+
+# Path to cookies file (NOT tracked by git - stored in user's home)
+COOKIES_FILE = os.path.expanduser('~/.config/ytplayer/cookies.txt')
+
 
 # --- Hilo de Búsqueda (Worker) ---
-# Separamos la búsqueda de la UI para no bloquear el framebuffer
 class SearchThread(QThread):
     results_ready = pyqtSignal(list)
+    error_occurred = pyqtSignal(str)
 
     def __init__(self, query):
         super().__init__()
@@ -23,66 +28,35 @@ class SearchThread(QThread):
             results = search.result()['result']
             self.results_ready.emit(results)
         except Exception as e:
-            print(f"Error en búsqueda: {e}")
+            self.error_occurred.emit(str(e))
             self.results_ready.emit([])
-
-
-# --- Hilo para obtener stream via Piped API ---
-class StreamThread(QThread):
-    stream_ready = pyqtSignal(str, dict)  # url, video_info
-    stream_error = pyqtSignal(str)  # error message
-
-    PIPED_INSTANCES = [
-        'https://pipedapi.kavin.rocks',
-        'https://api.piped.yt',
-        'https://pipedapi.adminforge.de',
-    ]
-
-    def __init__(self, video_info):
-        super().__init__()
-        self.video_info = video_info
-
-    def run(self):
-        video_id = self.extract_video_id(self.video_info['link'])
-        for instance in self.PIPED_INSTANCES:
-            try:
-                client = PipedClient(base_url=instance)
-                video = client.get_video(video_id)
-                streams = video.get_streams('audio')
-                if streams:
-                    self.stream_ready.emit(streams[0].url, self.video_info)
-                    return
-            except Exception:
-                continue
-        self.stream_error.emit("No se pudo obtener stream de ningún servidor Piped")
-
-    def extract_video_id(self, url):
-        """Extract video ID from youtube.com/watch?v=XXX or youtu.be/XXX"""
-        if 'youtu.be/' in url:
-            return url.split('youtu.be/')[1].split('?')[0]
-        if 'v=' in url:
-            return url.split('v=')[1].split('&')[0]
-        return url
 
 
 # --- Aplicación Principal ---
 class BBBPlayer(QWidget):
     def __init__(self):
         super().__init__()
-        # En modo framebuffer, la ventana suele tomar toda la pantalla por defecto,
-        # pero definimos un tamaño base por si acaso.
-        self.resize(800, 480) 
+        self.resize(800, 480)
         self.setWindowTitle('BBB Tuber')
-        
+
         self.current_process = None
         self.video_data_list = []
-        self.queue = []  # Queue of video info dicts
+        self.queue = []
         self.current_title = ""
         self.is_loading = False
         self.playback_started = False
+        self.log_lines = []
+        self.max_log_lines = 5
 
         self.init_ui()
         self.setup_shortcuts()
+
+        # Initial log
+        self.log("BBB Tuber iniciado")
+        if os.path.exists(COOKIES_FILE):
+            self.log("Cookies encontradas")
+        else:
+            self.log("Cookies no encontradas - ejecuta export_cookies.sh", "WARN")
 
     def init_ui(self):
         main_layout = QHBoxLayout()
@@ -90,7 +64,6 @@ class BBBPlayer(QWidget):
         # === LEFT PANEL (Search & Results) ===
         left_panel = QVBoxLayout()
 
-        # 1. Barra de Búsqueda
         search_layout = QHBoxLayout()
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Buscar en YouTube...")
@@ -104,16 +77,13 @@ class BBBPlayer(QWidget):
         search_layout.addWidget(self.search_input)
         search_layout.addWidget(btn_search)
 
-        # 2. Lista de Resultados
         self.list_widget = QListWidget()
         self.list_widget.setStyleSheet("font-size: 18px;")
         self.list_widget.itemDoubleClicked.connect(self.play_video)
 
-        # 3. Controles / Estado
         self.status_label = QLabel("Listo")
         self.status_label.setStyleSheet("font-size: 16px; color: gray;")
 
-        # Progress bar and time display
         progress_layout = QHBoxLayout()
 
         self.progress_bar = QProgressBar()
@@ -143,16 +113,32 @@ class BBBPlayer(QWidget):
         btn_stop.setStyleSheet("background-color: #d9534f; color: white; font-size: 20px; font-weight: bold;")
         btn_stop.clicked.connect(self.stop_music)
 
+        # === LOG TERMINAL ===
+        self.log_terminal = QPlainTextEdit()
+        self.log_terminal.setReadOnly(True)
+        self.log_terminal.setMaximumHeight(90)
+        self.log_terminal.setStyleSheet("""
+            QPlainTextEdit {
+                background-color: #1a1a1a;
+                color: #00ff00;
+                font-family: monospace;
+                font-size: 11px;
+                border: 1px solid #333;
+                border-radius: 3px;
+            }
+        """)
+        self.log_terminal.setPlaceholderText("Terminal de errores...")
+
         left_panel.addLayout(search_layout)
         left_panel.addWidget(self.list_widget)
         left_panel.addWidget(self.status_label)
         left_panel.addLayout(progress_layout)
         left_panel.addWidget(btn_stop)
+        left_panel.addWidget(self.log_terminal)
 
         # === RIGHT PANEL (Shortcuts & Queue) ===
         right_panel = QVBoxLayout()
 
-        # Keyboard shortcuts help
         shortcuts_text = """
 <b>ATAJOS DE TECLADO</b><br><br>
 <b>Navegación:</b><br>
@@ -183,7 +169,6 @@ Ctrl+Q - Salir
         shortcuts_label.setWordWrap(True)
         shortcuts_label.setAlignment(Qt.AlignTop)
 
-        # Queue section
         queue_title = QLabel("<b>COLA DE REPRODUCCIÓN</b>")
         queue_title.setStyleSheet("font-size: 16px; color: #5cb85c; margin-top: 10px;")
 
@@ -196,7 +181,6 @@ Ctrl+Q - Salir
         right_panel.addWidget(self.queue_widget)
         right_panel.addStretch()
 
-        # === Combine panels ===
         left_container = QWidget()
         left_container.setLayout(left_panel)
 
@@ -208,54 +192,58 @@ Ctrl+Q - Salir
         main_layout.addWidget(right_container)
 
         self.setLayout(main_layout)
-
-        # Set focus to list after UI is ready
         self.list_widget.setFocus()
 
     def setup_shortcuts(self):
-        """Configure keyboard shortcuts for full keyboard control."""
-        # Escape - Stop playback
         QShortcut(QKeySequence(Qt.Key_Escape), self, self.stop_music)
-
-        # / or Ctrl+F - Focus search box
         QShortcut(QKeySequence('/'), self, self.focus_search)
         QShortcut(QKeySequence('Ctrl+F'), self, self.focus_search)
-
-        # Ctrl+Q - Quit application
         QShortcut(QKeySequence('Ctrl+Q'), self, self.close)
-
-        # Space - Play selected (when list has focus)
         QShortcut(QKeySequence(Qt.Key_Space), self, self.play_selected)
-
-        # Enter/Return in list - Play selected
         self.list_widget.itemActivated.connect(self.play_video)
-
-        # Queue shortcuts
         QShortcut(QKeySequence('E'), self, self.enqueue_selected)
         QShortcut(QKeySequence('N'), self, self.play_next)
         QShortcut(QKeySequence('C'), self, self.clear_queue)
         QShortcut(QKeySequence('X'), self, self.remove_from_queue)
 
+    def log(self, message, level="INFO"):
+        """Add a message to the log terminal. Levels: INFO, WARN, ERROR"""
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        color_prefix = ""
+        if level == "ERROR":
+            color_prefix = "❌ "
+        elif level == "WARN":
+            color_prefix = "⚠️ "
+
+        line = f"[{timestamp}] {color_prefix}{message}"
+        self.log_lines.append(line)
+
+        # Keep only the last N lines
+        if len(self.log_lines) > self.max_log_lines:
+            self.log_lines = self.log_lines[-self.max_log_lines:]
+
+        self.log_terminal.setPlainText("\n".join(self.log_lines))
+        # Scroll to bottom
+        self.log_terminal.verticalScrollBar().setValue(
+            self.log_terminal.verticalScrollBar().maximum()
+        )
+
     def focus_search(self):
-        """Focus the search input and select all text."""
         self.search_input.setFocus()
         self.search_input.selectAll()
 
     def focus_list(self):
-        """Focus the results list."""
         self.list_widget.setFocus()
         if self.list_widget.count() > 0 and self.list_widget.currentRow() < 0:
             self.list_widget.setCurrentRow(0)
 
     def play_selected(self):
-        """Play the currently selected item in the list."""
         current_item = self.list_widget.currentItem()
         if current_item:
             self.play_video(current_item)
 
     # === Queue Methods ===
     def enqueue_selected(self):
-        """Add the currently selected item to the queue."""
         if self.search_input.hasFocus():
             return
         current_item = self.list_widget.currentItem()
@@ -267,14 +255,12 @@ Ctrl+Q - Salir
             self.status_label.setText(f"Encolado: {video_info['title'][:40]}...")
 
     def update_queue_display(self):
-        """Update the queue list widget."""
         self.queue_widget.clear()
         for i, vid in enumerate(self.queue):
             title = vid['title'][:35] + "..." if len(vid['title']) > 35 else vid['title']
             self.queue_widget.addItem(f"{i+1}. {title}")
 
     def play_next(self):
-        """Play the next item in the queue."""
         if self.search_input.hasFocus():
             return
         if self.queue:
@@ -285,7 +271,6 @@ Ctrl+Q - Salir
             self.status_label.setText("Cola vacía")
 
     def clear_queue(self):
-        """Clear the entire queue."""
         if self.search_input.hasFocus():
             return
         self.queue.clear()
@@ -293,7 +278,6 @@ Ctrl+Q - Salir
         self.status_label.setText("Cola limpiada")
 
     def remove_from_queue(self):
-        """Remove the selected item from the queue."""
         if self.search_input.hasFocus():
             return
         current_row = self.queue_widget.currentRow()
@@ -303,17 +287,13 @@ Ctrl+Q - Salir
             self.status_label.setText(f"Quitado de cola: {removed['title'][:30]}...")
 
     def keyPressEvent(self, event):
-        """Handle key press events for navigation."""
         key = event.key()
 
-        # Escape - if in search, go back to list; otherwise stop music
         if key == Qt.Key_Escape:
             if self.search_input.hasFocus():
                 self.focus_list()
                 return
-            # Let the shortcut handle stop_music
 
-        # Tab - toggle between search and list
         if key == Qt.Key_Tab:
             if self.search_input.hasFocus():
                 self.focus_list()
@@ -321,7 +301,6 @@ Ctrl+Q - Salir
                 self.focus_search()
             return
 
-        # J/K for vim-style navigation (only when not in search)
         if key == Qt.Key_J and not self.search_input.hasFocus():
             current_row = self.list_widget.currentRow()
             if current_row < self.list_widget.count() - 1:
@@ -333,7 +312,6 @@ Ctrl+Q - Salir
                 self.list_widget.setCurrentRow(current_row - 1)
             return
 
-        # G - Go to top, Shift+G - Go to bottom (only when not in search)
         if key == Qt.Key_G and not self.search_input.hasFocus():
             if event.modifiers() & Qt.ShiftModifier:
                 self.list_widget.setCurrentRow(self.list_widget.count() - 1)
@@ -341,7 +319,6 @@ Ctrl+Q - Salir
                 self.list_widget.setCurrentRow(0)
             return
 
-        # S - Stop music
         if key == Qt.Key_S and not self.search_input.hasFocus():
             self.stop_music()
             return
@@ -351,18 +328,20 @@ Ctrl+Q - Salir
     def start_search(self):
         query = self.search_input.text()
         if not query: return
-        
+
         self.status_label.setText("Buscando...")
         self.list_widget.clear()
-        
+        self.log(f"Buscando: {query}")
+
         self.search_thread = SearchThread(query)
         self.search_thread.results_ready.connect(self.handle_results)
+        self.search_thread.error_occurred.connect(lambda e: self.log(f"Error búsqueda: {e}", "ERROR"))
         self.search_thread.start()
 
     def handle_results(self, results):
         self.video_data_list = results
         self.status_label.setText(f"Encontrados {len(results)} resultados.")
-        
+
         for vid in results:
             title = vid['title']
             duration = vid.get('duration', 'N/A')
@@ -375,74 +354,75 @@ Ctrl+Q - Salir
 
     def play_video_from_info(self, video_info):
         """Play a video from its info dict."""
+        link = video_info['link']
+
         self.stop_music()
 
         # Set loading state
         self.current_title = video_info['title']
         self.is_loading = True
         self.playback_started = False
-        self.status_label.setText(f"⏳ Obteniendo stream: {self.current_title[:50]}...")
+        self.status_label.setText(f"⏳ Cargando: {self.current_title[:50]}...")
         self.status_label.setStyleSheet("font-size: 16px; color: orange;")
         self.progress_bar.setValue(0)
-        self.progress_bar.setRange(0, 0)  # Indeterminate mode (loading animation)
+        self.progress_bar.setRange(0, 0)  # Indeterminate mode
         self.time_label.setText("Cargando...")
 
-        # Get stream URL via Piped API (bypasses YouTube bot detection)
-        self.stream_thread = StreamThread(video_info)
-        self.stream_thread.stream_ready.connect(self.start_playback)
-        self.stream_thread.stream_error.connect(self.on_stream_error)
-        self.stream_thread.start()
+        self.log(f"Reproduciendo: {self.current_title[:40]}...")
 
-    def start_playback(self, stream_url, video_info):
-        """Start mpv with the direct stream URL from Piped."""
+        # Build mpv arguments
+        mpv_args = [
+            '--no-video',
+            '--term-osd-bar=no',
+            '--msg-level=all=status',
+        ]
+
+        # Add cookies if file exists (for YouTube authentication)
+        if os.path.exists(COOKIES_FILE):
+            mpv_args.append(f'--ytdl-raw-options=cookies={COOKIES_FILE}')
+            self.log("Usando cookies de autenticación")
+        else:
+            self.log("Sin cookies (puede fallar)", "WARN")
+
+        mpv_args.append(link)
+
+        # Start mpv
         self.current_process = QProcess(self)
         self.current_process.finished.connect(self.on_playback_finished)
         self.current_process.readyReadStandardError.connect(self.on_mpv_output)
         self.current_process.setProcessChannelMode(QProcess.MergedChannels)
         self.current_process.readyReadStandardOutput.connect(self.on_mpv_output)
-        self.current_process.start('mpv', [
-            '--no-video',
-            '--term-osd-bar=no',
-            '--msg-level=all=status',
-            stream_url
-        ])
-
-    def on_stream_error(self, error_msg):
-        """Handle stream fetch errors from Piped API."""
-        self.is_loading = False
-        self.progress_bar.setRange(0, 100)
-        self.progress_bar.setValue(0)
-        self.time_label.setText("--:-- / --:--")
-        self.status_label.setText(f"Error: {error_msg}")
-        self.status_label.setStyleSheet("font-size: 16px; color: #d9534f;")
+        self.current_process.start('mpv', mpv_args)
 
     def on_mpv_output(self):
-        """Parse mpv output to extract playback progress."""
         if not self.current_process:
             return
 
         data = self.current_process.readAllStandardOutput().data().decode('utf-8', errors='ignore')
 
-        # mpv outputs time like: "AV: 00:01:23 / 00:04:56" or "A: 00:01:23 / 00:04:56"
-        # Also matches "(XX%)" percentage
+        # Detect errors from mpv/yt-dlp
+        if 'ERROR' in data or 'error' in data.lower():
+            # Extract meaningful error message
+            for line in data.split('\n'):
+                line = line.strip()
+                if line and ('error' in line.lower() or 'failed' in line.lower() or 'bot' in line.lower()):
+                    self.log(line[:60], "ERROR")
+
         time_match = re.search(r'A[V]?:\s*(\d+:\d+:\d+|\d+:\d+)\s*/\s*(\d+:\d+:\d+|\d+:\d+)', data)
 
         if time_match:
-            # Playback has started
             if self.is_loading:
                 self.is_loading = False
                 self.playback_started = True
                 self.status_label.setText(f"▶ {self.current_title[:50]}")
                 self.status_label.setStyleSheet("font-size: 16px; color: #5cb85c;")
-                self.progress_bar.setRange(0, 100)  # Exit indeterminate mode
+                self.progress_bar.setRange(0, 100)
 
             current_time = time_match.group(1)
             total_time = time_match.group(2)
 
-            # Update time label
             self.time_label.setText(f"{current_time} / {total_time}")
 
-            # Calculate and update progress bar
             current_secs = self.time_to_seconds(current_time)
             total_secs = self.time_to_seconds(total_time)
 
@@ -451,7 +431,6 @@ Ctrl+Q - Salir
                 self.progress_bar.setValue(percent)
 
     def time_to_seconds(self, time_str):
-        """Convert time string (MM:SS or HH:MM:SS) to seconds."""
         parts = time_str.split(':')
         if len(parts) == 2:
             return int(parts[0]) * 60 + int(parts[1])
@@ -460,7 +439,6 @@ Ctrl+Q - Salir
         return 0
 
     def on_playback_finished(self):
-        """Called when mpv finishes playing."""
         self.current_process = None
         self.is_loading = False
         self.progress_bar.setValue(0)
@@ -468,12 +446,14 @@ Ctrl+Q - Salir
         self.time_label.setText("--:-- / --:--")
         self.status_label.setStyleSheet("font-size: 16px; color: gray;")
         if self.queue:
-            # Auto-play next in queue
+            self.log(f"Siguiente en cola ({len(self.queue)} restantes)")
             self.play_next()
         else:
+            self.log("Reproducción finalizada")
             self.status_label.setText("Listo")
 
     def stop_music(self):
+        was_playing = self.current_process is not None
         if self.current_process:
             self.current_process.finished.disconnect()
             self.current_process.terminate()
@@ -485,15 +465,12 @@ Ctrl+Q - Salir
         self.time_label.setText("--:-- / --:--")
         self.status_label.setText("Detenido")
         self.status_label.setStyleSheet("font-size: 16px; color: gray;")
+        if was_playing:
+            self.log("Detenido por usuario")
+
 
 if __name__ == '__main__':
-    # Pasar argumentos al QApplication es importante para recibir flags como -platform
     app = QApplication(sys.argv)
     player = BBBPlayer()
-    
-    # En modo embedded sin gestor de ventanas, showFullScreen es lo ideal
-    player.showFullScreen() 
-    
+    player.showFullScreen()
     sys.exit(app.exec_())
-
-
