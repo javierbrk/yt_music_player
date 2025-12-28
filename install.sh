@@ -40,9 +40,9 @@ echo -e "${YELLOW}[2/4] Configurando entorno Python...${NC}"
 INSTALL_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$INSTALL_DIR"
 
-# Crear venv si no existe
+# Crear venv si no existe (con acceso a paquetes del sistema para PyQt5)
 if [ ! -d "venv" ]; then
-    python3 -m venv venv
+    python3 -m venv --system-site-packages venv
     echo "   Entorno virtual creado"
 fi
 
