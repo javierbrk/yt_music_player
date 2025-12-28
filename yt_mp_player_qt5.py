@@ -69,7 +69,7 @@ class BBBPlayer(QWidget):
     def __init__(self):
         super().__init__()
         self.resize(800, 480)
-        self.setWindowTitle('BBB Tuber')
+        self.setWindowTitle('🎵 Música de Emilia y Frida 🎵')
 
         self.current_process = None
         self.video_data_list = []
@@ -84,82 +84,156 @@ class BBBPlayer(QWidget):
         self.setup_shortcuts()
 
         # Initial log
-        self.log("BBB Tuber iniciado")
+        self.log("🎉 ¡Hola Emilia y Frida!")
         if os.path.exists(COOKIES_FILE):
-            self.log("Cookies encontradas")
+            self.log("✅ Todo listo")
         else:
-            self.log("Cookies no encontradas - ejecuta export_cookies.sh", "WARN")
+            self.log("⚠️ Falta configurar", "WARN")
 
     def init_ui(self):
+        # Anthroposophic/Waldorf color scheme - warm, natural, organic
+        self.setStyleSheet("""
+            QWidget {
+                background-color: #fdf6e3;
+                color: #5c4a3d;
+                font-family: 'Segoe UI', 'Ubuntu', sans-serif;
+            }
+            QLineEdit {
+                background-color: #fff8dc;
+                border: 4px solid #e8a87c;
+                border-radius: 25px;
+                padding: 12px 20px;
+                font-size: 22px;
+                color: #5c4a3d;
+            }
+            QLineEdit:focus {
+                border-color: #c38d6b;
+                background-color: #fffef5;
+            }
+            QListWidget {
+                background-color: #fff8dc;
+                border: 4px solid #d4a574;
+                border-radius: 25px;
+                padding: 12px;
+                font-size: 18px;
+            }
+            QListWidget::item {
+                padding: 14px;
+                border-radius: 18px;
+                margin: 4px;
+                background-color: #fef9e7;
+            }
+            QListWidget::item:selected {
+                background-color: #e8a87c;
+                color: #3d2914;
+            }
+            QListWidget::item:hover {
+                background-color: #f5deb3;
+            }
+            QPushButton {
+                border-radius: 25px;
+                padding: 15px 30px;
+                font-size: 20px;
+                font-weight: bold;
+                border: none;
+            }
+            QProgressBar {
+                border: 4px solid #d4a574;
+                border-radius: 15px;
+                text-align: center;
+                height: 28px;
+                background-color: #fff8dc;
+            }
+            QProgressBar::chunk {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #e8a87c, stop:0.5 #c9a66b, stop:1 #85c88a);
+                border-radius: 11px;
+            }
+        """)
+
         main_layout = QHBoxLayout()
 
         # === LEFT PANEL (Search & Results) ===
         left_panel = QVBoxLayout()
 
+        # Welcome header with kids names
+        welcome_label = QLabel("🌸 Música para Emilia y Frida 🌻")
+        welcome_label.setStyleSheet("""
+            font-size: 26px;
+            font-weight: bold;
+            color: #5c4a3d;
+            padding: 15px;
+            background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                stop:0 #f5deb3, stop:0.3 #e8a87c, stop:0.7 #85c88a, stop:1 #a7c5eb);
+            border-radius: 30px;
+            margin-bottom: 10px;
+        """)
+        welcome_label.setAlignment(Qt.AlignCenter)
+        left_panel.addWidget(welcome_label)
+
         search_layout = QHBoxLayout()
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("Buscar en YouTube...")
-        self.search_input.setStyleSheet("font-size: 20px; padding: 5px;")
+        self.search_input.setPlaceholderText("🔍 ¿Qué quieres escuchar?")
         self.search_input.returnPressed.connect(self.start_search)
 
-        btn_search = QPushButton("Buscar")
-        btn_search.setStyleSheet("font-size: 20px; padding: 10px;")
+        btn_search = QPushButton("🔎 Buscar")
+        btn_search.setStyleSheet("""
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 #85c88a, stop:1 #6ba36e);
+            color: #2d4a2e;
+            border: none;
+        """)
         btn_search.clicked.connect(self.start_search)
 
         search_layout.addWidget(self.search_input)
         search_layout.addWidget(btn_search)
 
         self.list_widget = QListWidget()
-        self.list_widget.setStyleSheet("font-size: 18px;")
         self.list_widget.itemDoubleClicked.connect(self.play_video)
 
-        self.status_label = QLabel("Listo")
-        self.status_label.setStyleSheet("font-size: 16px; color: gray;")
+        self.status_label = QLabel("🎶 Listo para escuchar música!")
+        self.status_label.setStyleSheet("font-size: 18px; color: #6ba36e; padding: 8px;")
 
         progress_layout = QHBoxLayout()
 
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
-        self.progress_bar.setStyleSheet("""
-            QProgressBar {
-                border: 1px solid #444;
-                border-radius: 3px;
-                text-align: center;
-                height: 20px;
-            }
-            QProgressBar::chunk {
-                background-color: #5cb85c;
-            }
-        """)
         self.progress_bar.setFormat("")
 
         self.time_label = QLabel("--:-- / --:--")
-        self.time_label.setStyleSheet("font-size: 14px; color: #888; min-width: 100px;")
+        self.time_label.setStyleSheet("font-size: 16px; color: #c38d6b; min-width: 120px; font-weight: bold;")
         self.time_label.setAlignment(Qt.AlignCenter)
 
         progress_layout.addWidget(self.progress_bar)
         progress_layout.addWidget(self.time_label)
 
-        btn_stop = QPushButton("Detener")
-        btn_stop.setStyleSheet("background-color: #d9534f; color: white; font-size: 20px; font-weight: bold;")
+        btn_stop = QPushButton("⏹️ Parar")
+        btn_stop.setStyleSheet("""
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 #e8a87c, stop:1 #c9886a);
+            color: #4a3728;
+            border: none;
+            min-height: 55px;
+        """)
         btn_stop.clicked.connect(self.stop_music)
 
         # === LOG TERMINAL ===
         self.log_terminal = QPlainTextEdit()
         self.log_terminal.setReadOnly(True)
-        self.log_terminal.setMaximumHeight(90)
+        self.log_terminal.setMaximumHeight(65)
         self.log_terminal.setStyleSheet("""
             QPlainTextEdit {
-                background-color: #1a1a1a;
-                color: #00ff00;
+                background-color: #f5f0e1;
+                color: #6b5344;
                 font-family: monospace;
-                font-size: 11px;
-                border: 1px solid #333;
-                border-radius: 3px;
+                font-size: 12px;
+                border: 3px solid #d4a574;
+                border-radius: 15px;
+                padding: 8px;
             }
         """)
-        self.log_terminal.setPlaceholderText("Terminal de errores...")
+        self.log_terminal.setPlaceholderText("...")
 
         left_panel.addLayout(search_layout)
         left_panel.addWidget(self.list_widget)
@@ -168,47 +242,51 @@ class BBBPlayer(QWidget):
         left_panel.addWidget(btn_stop)
         left_panel.addWidget(self.log_terminal)
 
-        # === RIGHT PANEL (Shortcuts & Queue) ===
+        # === RIGHT PANEL (Help & Queue) ===
         right_panel = QVBoxLayout()
 
-        shortcuts_text = """
-<b>ATAJOS DE TECLADO</b><br><br>
-<b>Navegación:</b><br>
-↑/↓, j/k - Navegar lista<br>
-g - Ir al inicio<br>
-G - Ir al final<br><br>
-<b>Reproducción:</b><br>
-Enter/Space - Reproducir<br>
-e - Encolar selección<br>
-s/Esc - Detener<br>
-n - Siguiente en cola<br><br>
-<b>Cola:</b><br>
-c - Limpiar cola<br>
-x - Quitar de cola<br><br>
-<b>Otros:</b><br>
-/ o Ctrl+F - Buscar<br>
-Tab - Cambiar foco<br>
-Ctrl+Q - Salir
+        # Kid-friendly help panel with Waldorf colors - VISIBLE SHORTCUTS
+        help_text = """
+<div style='text-align: center;'>
+<span style='font-size: 24px; font-weight: bold;'>🌈 ATAJOS 🌈</span><br><br>
+<table style='font-size: 18px; margin: auto;'>
+<tr><td style='padding: 8px;'><b style='font-size: 24px; color: #6ba36e;'>B</b></td><td>Buscar 🔍</td></tr>
+<tr><td style='padding: 8px;'><b style='font-size: 24px; color: #6ba36e;'>R</b></td><td>Reproducir ▶️</td></tr>
+<tr><td style='padding: 8px;'><b style='font-size: 24px; color: #6ba36e;'>E</b></td><td>Encolar 📋</td></tr>
+<tr><td style='padding: 8px;'><b style='font-size: 24px; color: #e8a87c;'>S</b></td><td>Siguiente ⏭️</td></tr>
+<tr><td style='padding: 8px;'><b style='font-size: 24px; color: #c9886a;'>P</b></td><td>Parar ⏹️</td></tr>
+<tr><td style='padding: 8px;'><b style='font-size: 24px; color: #a7c5eb;'>L</b></td><td>Limpiar 🗑️</td></tr>
+<tr><td style='padding: 8px;'><b style='font-size: 24px; color: #a7c5eb;'>Q</b></td><td>Quitar ❌</td></tr>
+<tr><td style='padding: 8px;'><b style='font-size: 24px; color: #c9886a;'>A</b></td><td>Apagar 🚪</td></tr>
+</table>
+</div>
 """
-        shortcuts_label = QLabel(shortcuts_text)
-        shortcuts_label.setStyleSheet("""
-            font-size: 14px;
-            background-color: #2d2d2d;
-            color: #cccccc;
+        help_label = QLabel(help_text)
+        help_label.setStyleSheet("""
+            font-size: 18px;
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 #fff8dc, stop:1 #f5deb3);
+            color: #5c4a3d;
             padding: 15px;
-            border-radius: 5px;
+            border-radius: 30px;
+            border: 4px solid #d4a574;
         """)
-        shortcuts_label.setWordWrap(True)
-        shortcuts_label.setAlignment(Qt.AlignTop)
+        help_label.setWordWrap(True)
+        help_label.setAlignment(Qt.AlignTop)
 
-        queue_title = QLabel("<b>COLA DE REPRODUCCIÓN</b>")
-        queue_title.setStyleSheet("font-size: 16px; color: #5cb85c; margin-top: 10px;")
+        queue_title = QLabel("🎶 Siguiente")
+        queue_title.setStyleSheet("""
+            font-size: 18px;
+            color: #6ba36e;
+            margin-top: 15px;
+            font-weight: bold;
+        """)
 
         self.queue_widget = QListWidget()
         self.queue_widget.setStyleSheet("font-size: 14px;")
         self.queue_widget.setMaximumHeight(200)
 
-        right_panel.addWidget(shortcuts_label)
+        right_panel.addWidget(help_label)
         right_panel.addWidget(queue_title)
         right_panel.addWidget(self.queue_widget)
         right_panel.addStretch()
@@ -218,7 +296,7 @@ Ctrl+Q - Salir
 
         right_container = QWidget()
         right_container.setLayout(right_panel)
-        right_container.setFixedWidth(250)
+        right_container.setFixedWidth(280)
 
         main_layout.addWidget(left_container, stretch=1)
         main_layout.addWidget(right_container)
@@ -227,16 +305,18 @@ Ctrl+Q - Salir
         self.list_widget.setFocus()
 
     def setup_shortcuts(self):
+        # Atajos con primera letra en español
+        QShortcut(QKeySequence('B'), self, self.focus_search)      # Buscar
+        QShortcut(QKeySequence('R'), self, self.play_selected)     # Reproducir
+        QShortcut(QKeySequence('E'), self, self.enqueue_selected)  # Encolar
+        QShortcut(QKeySequence('S'), self, self.play_next)         # Siguiente
+        QShortcut(QKeySequence('P'), self, self.stop_music)        # Parar
+        QShortcut(QKeySequence('L'), self, self.clear_queue)       # Limpiar cola
+        QShortcut(QKeySequence('Q'), self, self.remove_from_queue) # Quitar de cola
         QShortcut(QKeySequence(Qt.Key_Escape), self, self.stop_music)
-        QShortcut(QKeySequence('/'), self, self.focus_search)
-        QShortcut(QKeySequence('Ctrl+F'), self, self.focus_search)
-        QShortcut(QKeySequence('Ctrl+Q'), self, self.close)
         QShortcut(QKeySequence(Qt.Key_Space), self, self.play_selected)
+        QShortcut(QKeySequence('A'), self, self.close)              # Apagar/Salir
         self.list_widget.itemActivated.connect(self.play_video)
-        QShortcut(QKeySequence('E'), self, self.enqueue_selected)
-        QShortcut(QKeySequence('N'), self, self.play_next)
-        QShortcut(QKeySequence('C'), self, self.clear_queue)
-        QShortcut(QKeySequence('X'), self, self.remove_from_queue)
 
     def log(self, message, level="INFO"):
         """Add a message to the log terminal. Levels: INFO, WARN, ERROR"""
@@ -340,26 +420,13 @@ Ctrl+Q - Salir
                 self.focus_search()
             return
 
-        if key == Qt.Key_J and not self.search_input.hasFocus():
-            current_row = self.list_widget.currentRow()
-            if current_row < self.list_widget.count() - 1:
-                self.list_widget.setCurrentRow(current_row + 1)
-            return
-        elif key == Qt.Key_K and not self.search_input.hasFocus():
-            current_row = self.list_widget.currentRow()
-            if current_row > 0:
-                self.list_widget.setCurrentRow(current_row - 1)
+        # Navegación: I = Inicio, F = Final
+        if key == Qt.Key_I and not self.search_input.hasFocus():
+            self.list_widget.setCurrentRow(0)
             return
 
-        if key == Qt.Key_G and not self.search_input.hasFocus():
-            if event.modifiers() & Qt.ShiftModifier:
-                self.list_widget.setCurrentRow(self.list_widget.count() - 1)
-            else:
-                self.list_widget.setCurrentRow(0)
-            return
-
-        if key == Qt.Key_S and not self.search_input.hasFocus():
-            self.stop_music()
+        if key == Qt.Key_F and not self.search_input.hasFocus():
+            self.list_widget.setCurrentRow(self.list_widget.count() - 1)
             return
 
         super().keyPressEvent(event)
@@ -368,7 +435,7 @@ Ctrl+Q - Salir
         query = self.search_input.text()
         if not query: return
 
-        self.status_label.setText("Buscando...")
+        self.status_label.setText("🔍 Buscando...")
         self.list_widget.clear()
         self.log(f"Buscando: {query}")
 
@@ -405,7 +472,7 @@ Ctrl+Q - Salir
         self.is_loading = True
         self.playback_started = False
         self.status_label.setText(f"⏳ Cargando: {self.current_title[:50]}...")
-        self.status_label.setStyleSheet("font-size: 16px; color: orange;")
+        self.status_label.setStyleSheet("font-size: 18px; color: #c9886a;")
         self.progress_bar.setValue(0)
         self.progress_bar.setRange(0, 0)  # Indeterminate mode
         self.time_label.setText("Cargando...")
@@ -457,7 +524,7 @@ Ctrl+Q - Salir
                 self.is_loading = False
                 self.playback_started = True
                 self.status_label.setText(f"▶ {self.current_title[:50]}")
-                self.status_label.setStyleSheet("font-size: 16px; color: #5cb85c;")
+                self.status_label.setStyleSheet("font-size: 18px; color: #6ba36e;")
                 self.progress_bar.setRange(0, 100)
 
             current_time = time_match.group(1)
@@ -486,7 +553,7 @@ Ctrl+Q - Salir
         self.progress_bar.setValue(0)
         self.progress_bar.setRange(0, 100)
         self.time_label.setText("--:-- / --:--")
-        self.status_label.setStyleSheet("font-size: 16px; color: gray;")
+        self.status_label.setStyleSheet("font-size: 18px; color: #8b7355;")
         if self.queue:
             self.log(f"Siguiente en cola ({len(self.queue)} restantes)")
             self.play_next()
@@ -505,8 +572,8 @@ Ctrl+Q - Salir
         self.progress_bar.setValue(0)
         self.progress_bar.setRange(0, 100)
         self.time_label.setText("--:-- / --:--")
-        self.status_label.setText("Detenido")
-        self.status_label.setStyleSheet("font-size: 16px; color: gray;")
+        self.status_label.setText("⏸️ Detenido")
+        self.status_label.setStyleSheet("font-size: 18px; color: #8b7355;")
         if was_playing:
             self.log("Detenido por usuario")
 
