@@ -80,6 +80,11 @@ class BBBPlayer(QWidget):
         self.log_lines = []
         self.max_log_lines = 5
 
+        # Pre-carga paralela
+        self.url_cache = {}           # {video_link: direct_audio_url}
+        self.prefetch_process = None  # QProcess para pre-carga
+        self.prefetch_link = None     # Link siendo pre-cargado
+
         self.init_ui()
         self.setup_shortcuts()
 
@@ -393,6 +398,11 @@ class BBBPlayer(QWidget):
         if self.search_input.hasFocus():
             return
         self.queue.clear()
+        self.url_cache.clear()  # Limpiar cache de URLs pre-cargadas
+        if self.prefetch_process:
+            self.prefetch_process.terminate()
+            self.prefetch_process = None
+            self.prefetch_link = None
         self.update_queue_display()
         self.status_label.setText("Cola limpiada")
 
@@ -404,6 +414,40 @@ class BBBPlayer(QWidget):
             removed = self.queue.pop(current_row)
             self.update_queue_display()
             self.status_label.setText(f"Quitado de cola: {removed['title'][:30]}...")
+
+    # === Pre-carga Paralela ===
+    def prefetch_next(self):
+        """Pre-cargar la URL del siguiente video en la cola."""
+        if not self.queue or self.prefetch_process:
+            return
+
+        next_video = self.queue[0]
+        link = next_video.get('link')
+        if not link or link in self.url_cache:
+            return  # Ya cacheado o sin link
+
+        self.prefetch_link = link
+        self.prefetch_process = QProcess(self)
+        self.prefetch_process.finished.connect(self.on_prefetch_finished)
+
+        # Construir comando yt-dlp
+        cmd_args = ['-f', 'bestaudio', '-g', '--no-warnings']
+        if os.path.exists(COOKIES_FILE):
+            cmd_args.extend(['--cookies', COOKIES_FILE])
+        cmd_args.append(link)
+
+        self.prefetch_process.start('yt-dlp', cmd_args)
+
+    def on_prefetch_finished(self):
+        """Callback cuando termina la pre-carga."""
+        if self.prefetch_process and self.prefetch_link:
+            output = self.prefetch_process.readAllStandardOutput().data().decode('utf-8').strip()
+            if output and output.startswith('http'):
+                self.url_cache[self.prefetch_link] = output
+                self.log("⚡ Siguiente pre-cargado")
+
+        self.prefetch_process = None
+        self.prefetch_link = None
 
     def keyPressEvent(self, event):
         key = event.key()
@@ -471,13 +515,9 @@ class BBBPlayer(QWidget):
         self.current_title = video_info.get('title') or 'Sin título'
         self.is_loading = True
         self.playback_started = False
-        self.status_label.setText(f"⏳ Cargando: {self.current_title[:50]}...")
-        self.status_label.setStyleSheet("font-size: 18px; color: #c9886a;")
         self.progress_bar.setValue(0)
         self.progress_bar.setRange(0, 0)  # Indeterminate mode
         self.time_label.setText("Cargando...")
-
-        self.log(f"Reproduciendo: {self.current_title[:40]}...")
 
         # Build mpv arguments
         mpv_args = [
@@ -486,14 +526,22 @@ class BBBPlayer(QWidget):
             '--msg-level=all=status',
         ]
 
-        # Add cookies if file exists (for YouTube authentication)
-        if os.path.exists(COOKIES_FILE):
-            mpv_args.append(f'--ytdl-raw-options=cookies={COOKIES_FILE}')
-            self.log("Usando cookies de autenticación")
+        # Verificar si hay URL pre-cargada (reproducción instantánea)
+        if link in self.url_cache:
+            direct_url = self.url_cache.pop(link)  # Usar y remover del cache
+            mpv_args.append(direct_url)
+            self.status_label.setText(f"⚡ {self.current_title[:50]}")
+            self.status_label.setStyleSheet("font-size: 18px; color: #6ba36e;")
+            self.log(f"⚡ Instantáneo: {self.current_title[:35]}...")
         else:
-            self.log("Sin cookies (puede fallar)", "WARN")
+            # Carga normal con yt-dlp
+            self.status_label.setText(f"⏳ Cargando: {self.current_title[:50]}...")
+            self.status_label.setStyleSheet("font-size: 18px; color: #c9886a;")
+            self.log(f"Reproduciendo: {self.current_title[:35]}...")
 
-        mpv_args.append(link)
+            if os.path.exists(COOKIES_FILE):
+                mpv_args.append(f'--ytdl-raw-options=cookies={COOKIES_FILE}')
+            mpv_args.append(link)
 
         # Start mpv
         self.current_process = QProcess(self)
@@ -502,6 +550,9 @@ class BBBPlayer(QWidget):
         self.current_process.setProcessChannelMode(QProcess.MergedChannels)
         self.current_process.readyReadStandardOutput.connect(self.on_mpv_output)
         self.current_process.start('mpv', mpv_args)
+
+        # Pre-cargar el siguiente en la cola
+        self.prefetch_next()
 
     def on_mpv_output(self):
         if not self.current_process:
