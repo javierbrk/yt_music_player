@@ -250,34 +250,31 @@ class BBBPlayer(QWidget):
         # === RIGHT PANEL (Help & Queue) ===
         right_panel = QVBoxLayout()
 
-        # Kid-friendly help panel with Waldorf colors - VISIBLE SHORTCUTS
+        # Kid-friendly help panel with Waldorf colors - COMPACT SHORTCUTS
         help_text = """
 <div style='text-align: center;'>
-<span style='font-size: 24px; font-weight: bold;'>🌈 ATAJOS 🌈</span><br><br>
-<table style='font-size: 18px; margin: auto;'>
-<tr><td style='padding: 8px;'><b style='font-size: 24px; color: #6ba36e;'>B</b></td><td>Buscar 🔍</td></tr>
-<tr><td style='padding: 8px;'><b style='font-size: 24px; color: #6ba36e;'>R</b></td><td>Reproducir ▶️</td></tr>
-<tr><td style='padding: 8px;'><b style='font-size: 24px; color: #6ba36e;'>E</b></td><td>Encolar 📋</td></tr>
-<tr><td style='padding: 8px;'><b style='font-size: 24px; color: #e8a87c;'>S</b></td><td>Siguiente ⏭️</td></tr>
-<tr><td style='padding: 8px;'><b style='font-size: 24px; color: #c9886a;'>P</b></td><td>Parar ⏹️</td></tr>
-<tr><td style='padding: 8px;'><b style='font-size: 24px; color: #a7c5eb;'>L</b></td><td>Limpiar 🗑️</td></tr>
-<tr><td style='padding: 8px;'><b style='font-size: 24px; color: #a7c5eb;'>Q</b></td><td>Quitar ❌</td></tr>
-<tr><td style='padding: 8px;'><b style='font-size: 24px; color: #c9886a;'>A</b></td><td>Apagar 🚪</td></tr>
+<b>🌈 ATAJOS 🌈</b><br>
+<table style='font-size: 14px;'>
+<tr><td><b style='color: #6ba36e;'>B</b> 🔍Buscar</td><td><b style='color: #6ba36e;'>R</b> ▶️Play</td></tr>
+<tr><td><b style='color: #6ba36e;'>E</b> 📋Encolar</td><td><b style='color: #e8a87c;'>S</b> ⏭️Sig</td></tr>
+<tr><td><b style='color: #c9886a;'>P</b> ⏹️Parar</td><td><b style='color: #a7c5eb;'>L</b> 🗑️Limp</td></tr>
+<tr><td><b style='color: #a7c5eb;'>Q</b> ❌Quitar</td><td><b style='color: #c9886a;'>A</b> 🚪Salir</td></tr>
 </table>
 </div>
 """
         help_label = QLabel(help_text)
         help_label.setStyleSheet("""
-            font-size: 18px;
+            font-size: 13px;
             background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                 stop:0 #fff8dc, stop:1 #f5deb3);
             color: #5c4a3d;
-            padding: 15px;
-            border-radius: 30px;
-            border: 4px solid #d4a574;
+            padding: 8px;
+            border-radius: 15px;
+            border: 3px solid #d4a574;
         """)
         help_label.setWordWrap(True)
         help_label.setAlignment(Qt.AlignTop)
+        help_label.setMaximumHeight(160)
 
         queue_title = QLabel("🎶 Siguiente")
         queue_title.setStyleSheet("""
@@ -289,12 +286,10 @@ class BBBPlayer(QWidget):
 
         self.queue_widget = QListWidget()
         self.queue_widget.setStyleSheet("font-size: 14px;")
-        self.queue_widget.setMaximumHeight(200)
 
         right_panel.addWidget(help_label)
         right_panel.addWidget(queue_title)
-        right_panel.addWidget(self.queue_widget)
-        right_panel.addStretch()
+        right_panel.addWidget(self.queue_widget, stretch=1)
 
         left_container = QWidget()
         left_container.setLayout(left_panel)
