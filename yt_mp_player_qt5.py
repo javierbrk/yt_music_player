@@ -1,13 +1,14 @@
 import sys
 import re
 import os
+import json
+import subprocess
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
                              QLineEdit, QPushButton, QListWidget, QLabel, QShortcut,
                              QProgressBar, QPlainTextEdit)
 from datetime import datetime
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QProcess
 from PyQt5.QtGui import QKeySequence
-from youtubesearchpython import VideosSearch
 
 # Path to cookies file (NOT tracked by git - stored in user's home)
 COOKIES_FILE = os.path.expanduser('~/.config/ytplayer/cookies.txt')
@@ -23,10 +24,41 @@ class SearchThread(QThread):
         self.query = query
 
     def run(self):
+        # Limpiar query
+        query = self.query.strip()
+        if not query:
+            self.results_ready.emit([])
+            return
+
+        # Usar yt-dlp para búsqueda (más confiable que youtube-search-python)
         try:
-            search = VideosSearch(self.query, limit=12)
-            results = search.result()['result']
-            self.results_ready.emit(results)
+            cmd = ['yt-dlp', '--flat-playlist', '--dump-json', f'ytsearch12:{query}']
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+
+            if result.returncode == 0 and result.stdout:
+                valid_results = []
+                for line in result.stdout.strip().split('\n'):
+                    if line:
+                        try:
+                            item = json.loads(line)
+                            title = item.get('title')
+                            video_id = item.get('id') or item.get('url', '').split('=')[-1]
+                            if title and video_id:
+                                valid_results.append({
+                                    'title': title,
+                                    'link': f'https://www.youtube.com/watch?v={video_id}',
+                                    'duration': item.get('duration_string') or 'N/A'
+                                })
+                        except json.JSONDecodeError:
+                            continue
+                self.results_ready.emit(valid_results)
+                return
+
+            self.error_occurred.emit("Sin resultados")
+            self.results_ready.emit([])
+        except subprocess.TimeoutExpired:
+            self.error_occurred.emit("Timeout en búsqueda")
+            self.results_ready.emit([])
         except Exception as e:
             self.error_occurred.emit(str(e))
             self.results_ready.emit([])
@@ -350,8 +382,8 @@ Ctrl+Q - Salir
         self.status_label.setText(f"Encontrados {len(results)} resultados.")
 
         for vid in results:
-            title = vid['title']
-            duration = vid.get('duration', 'N/A')
+            title = vid.get('title') or 'Sin título'
+            duration = vid.get('duration') or 'N/A'
             self.list_widget.addItem(f"{title} - [{duration}]")
 
     def play_video(self, item):
@@ -361,12 +393,15 @@ Ctrl+Q - Salir
 
     def play_video_from_info(self, video_info):
         """Play a video from its info dict."""
-        link = video_info['link']
+        link = video_info.get('link')
+        if not link:
+            self.log("Video sin enlace válido", "ERROR")
+            return
 
         self.stop_music()
 
         # Set loading state
-        self.current_title = video_info['title']
+        self.current_title = video_info.get('title') or 'Sin título'
         self.is_loading = True
         self.playback_started = False
         self.status_label.setText(f"⏳ Cargando: {self.current_title[:50]}...")
