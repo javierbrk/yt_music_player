@@ -1,0 +1,30 @@
+#!/bin/bash
+# Ejecutar export_cookies.sh al conectarse a redes HUAWEI
+
+INTERFACE="$1"
+ACTION="$2"
+
+# Solo actuar cuando una conexión se activa
+if [ "$ACTION" != "up" ]; then
+    exit 0
+fi
+
+# Obtener el SSID de la conexión actual
+SSID=$(nmcli -t -f active,ssid dev wifi | grep '^yes:' | cut -d: -f2)
+
+# Verificar si el SSID comienza con HUAWEI
+if [[ "$SSID" == HUAWEI* ]]; then
+    # Verificar si Firefox estaba corriendo
+    FIREFOX_WAS_RUNNING=false
+    if pgrep -f firefox > /dev/null; then
+        FIREFOX_WAS_RUNNING=true
+    fi
+
+    # Ejecutar como el usuario jjorge (no como root)
+    su - jjorge -c "/home/jjorge/Development/ytplayer/yt_music_player/export_cookies.sh -q"
+
+    # Si Firefox estaba corriendo, volver a abrirlo
+    if [ "$FIREFOX_WAS_RUNNING" = true ]; then
+        su - jjorge -c "DISPLAY=:0 firefox &" &
+    fi
+fi
