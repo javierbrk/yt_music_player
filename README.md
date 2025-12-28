@@ -13,30 +13,43 @@ A simple, UI-based YouTube music player that allows you to search for and play a
 
 ## Installation
 
-### System Dependencies
+### Quick Install (BeagleBone Black)
 
-**MPV and yt-dlp (for audio playback):**
+```bash
+git clone https://github.com/your-username/yt_music_player.git
+cd yt_music_player
+./install.sh
+```
+
+El script de instalación:
+- Instala todas las dependencias
+- Pregunta si quieres configurar auto-login
+- Pregunta si quieres que la UI arranque automáticamente
+
+### Manual Installation
 
 **On Debian/Ubuntu:**
 ```bash
 sudo apt-get update
-sudo apt-get install mpv yt-dlp python3-venv python3-pyqt5
+sudo apt-get install mpv python3-venv python3-pyqt5 python3-pip
 ```
 
 **On Arch Linux:**
 ```bash
-sudo pacman -S mpv yt-dlp python-pyqt5
+sudo pacman -S mpv python-pyqt5
 ```
 
-### Python Dependencies
+**Python Dependencies (en entorno virtual):**
 
 ```bash
 git clone https://github.com/your-username/yt_music_player.git
 cd yt_music_player
 python3 -m venv venv
 source venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements.txt  # Instala yt-dlp, PyQt5, etc.
 ```
+
+> **Nota:** Python moderno (PEP 668) requiere usar entornos virtuales. El script `install.sh` lo hace automáticamente.
 
 ## Configurar Cookies (IMPORTANTE)
 

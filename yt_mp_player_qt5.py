@@ -209,6 +209,13 @@ Ctrl+Q - Salir
     def log(self, message, level="INFO"):
         """Add a message to the log terminal. Levels: INFO, WARN, ERROR"""
         timestamp = datetime.now().strftime("%H:%M:%S")
+
+        # Console output (stdout)
+        level_tag = f"[{level}]" if level != "INFO" else ""
+        console_line = f"[{timestamp}] {level_tag} {message}".strip()
+        print(console_line, flush=True)
+
+        # GUI output
         color_prefix = ""
         if level == "ERROR":
             color_prefix = "❌ "

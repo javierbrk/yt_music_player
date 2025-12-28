@@ -3,6 +3,9 @@
 # Exit immediately if a command exits with a non-zero status.
 set -e
 
+# Change to the script's directory (important for auto-start)
+cd "$(dirname "$0")"
+
 # --- Configuration ---
 VENV_DIR="venv"
 

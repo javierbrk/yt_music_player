@@ -13,6 +13,7 @@ set -e
 # === CONFIGURACIÓN ===
 BBB_HOST="debian@beaglebone"
 BBB_COOKIES_PATH="~/.config/ytplayer/cookies.txt"
+LOCAL_COOKIES_PATH="$HOME/.config/ytplayer/cookies.txt"
 DEBUG_LEVEL=1  # 0=quiet, 1=normal, 2=verbose, 3=debug
 
 # === PARSEAR ARGUMENTOS ===
@@ -68,21 +69,32 @@ log_verbose "Ruta destino: $BBB_COOKIES_PATH"
 log_info ""
 
 # 1. Cerrar Firefox
-log_info "[1/4] Cerrando Firefox..."
+log_info "[1/5] Cerrando Firefox..."
 log_verbose "Ejecutando: pkill -f firefox"
 pkill -f firefox || true
 log_verbose "Esperando 2 segundos..."
 sleep 2
 
 # 2. Buscar el perfil de Firefox
-log_info "[2/4] Buscando perfil de Firefox..."
-FIREFOX_DIR="$HOME/.mozilla/firefox"
-log_verbose "Directorio de Firefox: $FIREFOX_DIR"
+log_info "[2/5] Buscando perfil de Firefox..."
 
-if [ ! -d "$FIREFOX_DIR" ]; then
-    log_error "No se encontró el directorio de Firefox: $FIREFOX_DIR"
+# Buscar en orden: Snap primero, luego tradicional
+FIREFOX_SNAP_DIR="$HOME/snap/firefox/common/.mozilla/firefox"
+FIREFOX_TRADITIONAL_DIR="$HOME/.mozilla/firefox"
+
+if [ -d "$FIREFOX_SNAP_DIR" ]; then
+    FIREFOX_DIR="$FIREFOX_SNAP_DIR"
+    log_verbose "Firefox Snap detectado"
+elif [ -d "$FIREFOX_TRADITIONAL_DIR" ]; then
+    FIREFOX_DIR="$FIREFOX_TRADITIONAL_DIR"
+    log_verbose "Firefox tradicional detectado"
+else
+    log_error "No se encontró Firefox (ni Snap ni tradicional)"
+    log_error "Buscado en: $FIREFOX_SNAP_DIR"
+    log_error "Buscado en: $FIREFOX_TRADITIONAL_DIR"
     exit 1
 fi
+log_verbose "Directorio de Firefox: $FIREFOX_DIR"
 log_debug "Directorio existe: OK"
 
 # Encontrar el perfil default
@@ -107,7 +119,7 @@ fi
 log_debug "Tamaño de cookies.sqlite: $(du -h "$COOKIES_DB" | cut -f1)"
 
 # 3. Exportar cookies de YouTube en formato Netscape
-log_info "[3/4] Extrayendo cookies de YouTube..."
+log_info "[3/5] Extrayendo cookies de YouTube..."
 
 # Copiar la base de datos (Firefox puede tenerla bloqueada)
 log_verbose "Copiando base de datos a /tmp/cookies_copy.sqlite"
@@ -115,32 +127,34 @@ cp "$COOKIES_DB" /tmp/cookies_copy.sqlite
 log_debug "Copia creada: $(du -h /tmp/cookies_copy.sqlite | cut -f1)"
 
 # Extraer cookies de YouTube en formato Netscape
-log_verbose "Ejecutando consulta SQL para youtube.com y google.com"
-sqlite3 -separator $'\t' /tmp/cookies_copy.sqlite <<EOF > "$TEMP_COOKIES"
-.mode tabs
+log_verbose "Ejecutando consulta SQL para youtube.com"
+
+# Crear archivo con header Netscape primero
+echo "# Netscape HTTP Cookie File" > "$TEMP_COOKIES"
+echo "# https://curl.se/docs/http-cookies.html" >> "$TEMP_COOKIES"
+echo "# Exported from Firefox for ytplayer" >> "$TEMP_COOKIES"
+echo "" >> "$TEMP_COOKIES"
+
+# Extraer cookies con formato correcto (7 campos separados por TAB)
+# Solo youtube.com (no google.com)
+sqlite3 -separator '	' /tmp/cookies_copy.sqlite "
 SELECT
     CASE WHEN host LIKE '.%' THEN host ELSE '.' || host END,
     CASE WHEN host LIKE '.%' THEN 'TRUE' ELSE 'FALSE' END,
     path,
-    CASE WHEN isSecure THEN 'TRUE' ELSE 'FALSE' END,
-    expiry,
+    CASE WHEN isSecure = 1 THEN 'TRUE' ELSE 'FALSE' END,
+    CAST(COALESCE(expiry, 0) AS INTEGER),
     name,
     value
 FROM moz_cookies
-WHERE host LIKE '%youtube.com' OR host LIKE '%google.com';
-EOF
+WHERE host LIKE '%youtube.com'
+  AND name IS NOT NULL AND name != ''
+  AND value IS NOT NULL AND value != ''
+  AND expiry IS NOT NULL;
+" >> "$TEMP_COOKIES"
 
-log_debug "Cookies extraídas (raw):"
-[ "$DEBUG_LEVEL" -ge 3 ] && head -5 "$TEMP_COOKIES"
-
-# Agregar header del formato Netscape
-log_verbose "Agregando header Netscape al archivo"
-TEMP_COOKIES2="/tmp/youtube_cookies2.txt"
-echo "# Netscape HTTP Cookie File" > "$TEMP_COOKIES2"
-echo "# Exported from Firefox for ytplayer" >> "$TEMP_COOKIES2"
-echo "" >> "$TEMP_COOKIES2"
-cat "$TEMP_COOKIES" >> "$TEMP_COOKIES2"
-mv "$TEMP_COOKIES2" "$TEMP_COOKIES"
+log_debug "Cookies extraídas:"
+[ "$DEBUG_LEVEL" -ge 3 ] && head -10 "$TEMP_COOKIES"
 
 # Limpiar copia temporal
 log_verbose "Limpiando copia temporal de la base de datos"
@@ -158,8 +172,14 @@ fi
 log_debug "Nombres de cookies encontradas:"
 [ "$DEBUG_LEVEL" -ge 3 ] && awk -F'\t' 'NR>3 {print "    - " $6}' "$TEMP_COOKIES"
 
-# 4. Enviar a BeagleBone
-log_info "[4/4] Enviando cookies a $BBB_HOST..."
+# 4. Guardar copia local
+log_info "[4/5] Guardando copia local..."
+mkdir -p "$(dirname "$LOCAL_COOKIES_PATH")"
+cp "$TEMP_COOKIES" "$LOCAL_COOKIES_PATH"
+log_info "   Guardado en: $LOCAL_COOKIES_PATH"
+
+# 5. Enviar a BeagleBone
+log_info "[5/5] Enviando cookies a $BBB_HOST..."
 log_verbose "Destino: $BBB_COOKIES_PATH"
 
 # Crear directorio en BBB si no existe
@@ -172,21 +192,21 @@ log_verbose "Enviando archivo via SCP"
 log_debug "Ejecutando: scp $TEMP_COOKIES $BBB_HOST:$BBB_COOKIES_PATH"
 scp "$TEMP_COOKIES" "$BBB_HOST:$BBB_COOKIES_PATH"
 
-# 5. Verificar
+# Verificar
 log_verbose "Verificando archivo en destino"
 REMOTE_SIZE=$(ssh "$BBB_HOST" "ls -la $BBB_COOKIES_PATH" 2>/dev/null)
 log_debug "Archivo remoto: $REMOTE_SIZE"
 
 # Limpiar
-log_verbose "Limpiando archivo temporal local"
+log_verbose "Limpiando archivo temporal"
 rm -f "$TEMP_COOKIES"
 
 log_info ""
 log_info "=== LISTO ==="
-log_info "Las cookies fueron enviadas a $BBB_HOST:$BBB_COOKIES_PATH"
+log_info "Cookies guardadas en:"
+log_info "   Local:  $LOCAL_COOKIES_PATH"
+log_info "   Remoto: $BBB_HOST:$BBB_COOKIES_PATH"
 log_info ""
-log_verbose "Para probar, ejecuta en la BeagleBone:"
-log_verbose "  mpv --no-video --ytdl-raw-options=cookies=$BBB_COOKIES_PATH 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'"
 
 [ "$DEBUG_LEVEL" -ge 1 ] && echo "IMPORTANTE: Asegúrate de estar logueado en YouTube antes de ejecutar este script."
 [ "$DEBUG_LEVEL" -ge 1 ] && echo "Las cookies expiran, así que tendrás que ejecutar esto de nuevo si dejan de funcionar."
