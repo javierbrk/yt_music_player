@@ -74,6 +74,16 @@ echo ""
 
 # 3. Launch the application using the venv's python
 echo "INFO: Launching YouTube Music Player..."
+
+# Detect BeagleBone and use linuxfb platform for Qt
+if [ -f /proc/device-tree/model ]; then
+    MODEL=$(cat /proc/device-tree/model 2>/dev/null)
+    if echo "$MODEL" | grep -qi "beaglebone"; then
+        echo "INFO: BeagleBone detected, using linuxfb Qt platform..."
+        export QT_QPA_PLATFORM=linuxfb
+    fi
+fi
+
 "$VENV_PYTHON" yt_mp_player_qt5.py
 
 echo "INFO: Application closed."
