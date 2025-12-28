@@ -26,9 +26,15 @@ echo -e "${YELLOW}[1/4] Instalando dependencias del sistema...${NC}"
 
 if command -v apt-get &> /dev/null; then
     sudo apt-get update
-    sudo apt-get install -y mpv python3-venv python3-pyqt5 python3-pip
+    sudo apt-get install -y mpv python3-venv python3-pyqt5 python3-pip fonts-noto-color-emoji fontconfig
     # yt-dlp se instala via pip (más actualizado que el de Debian)
+    # fonts-noto-color-emoji proporciona soporte de emojis para framebuffer
     echo -e "${GREEN}   ✓ Dependencias instaladas${NC}"
+
+    # Actualizar caché de fuentes para que el sistema reconozca los emojis
+    echo "   Actualizando caché de fuentes..."
+    fc-cache -f 2>/dev/null || true
+    echo -e "${GREEN}   ✓ Caché de fuentes actualizado${NC}"
 else
     echo -e "${RED}   ✗ No se encontró apt-get. Este script es para Debian/Ubuntu.${NC}"
     exit 1
