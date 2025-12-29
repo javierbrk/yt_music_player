@@ -19,7 +19,7 @@ import os
 
 
 class FlorCentral(QGraphicsObject):
-    """Flor/Lotus central - representa la canción actual."""
+    """Flor/Lotus central estilo Goetheanum - formas orgánicas amorfas."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -28,85 +28,153 @@ class FlorCentral(QGraphicsObject):
         self._rotation = 0
         self.setAcceptHoverEvents(True)
 
+        # Variaciones orgánicas para cada pétalo (asimetría Goetheanum)
+        self._petal_variations = [
+            (1.0, 0.0, 1.0),   # (escala, offset_angulo, ondulación)
+            (1.08, 3.0, 0.9),
+            (0.95, -2.0, 1.1),
+            (1.12, 5.0, 0.85),
+            (0.92, -4.0, 1.05),
+            (1.05, 2.0, 0.95),
+            (0.98, -3.0, 1.08),
+            (1.03, 4.0, 0.92),
+        ]
+
     def boundingRect(self):
-        return QRectF(-120, -80, 240, 160)
+        return QRectF(-130, -90, 260, 180)
+
+    def _draw_goetheanum_petal(self, painter, scale=1.0, wave=1.0):
+        """Dibuja un pétalo estilo Goetheanum - forma de gota/bulbo amorfa."""
+        petal = QPainterPath()
+        petal.moveTo(0, 0)
+        # Curva de salida suave y expansiva
+        petal.cubicTo(12 * scale, -18 * wave, 30 * scale, -28 * wave, 48 * scale, -22 * wave)
+        # Punta muy redondeada (tipo gota de agua)
+        petal.cubicTo(62 * scale, -15 * wave, 68 * scale, -5 * wave, 65 * scale, 5 * wave)
+        # Curva de regreso ondulante
+        petal.cubicTo(60 * scale, 18 * wave, 35 * scale, 25 * wave, 18 * scale, 18 * wave)
+        # Cierre suave hacia el centro
+        petal.cubicTo(8 * scale, 10 * wave, 3 * scale, 4 * wave, 0, 0)
+        return petal
 
     def paint(self, painter, option, widget):
         painter.setRenderHint(QPainter.Antialiasing)
 
-        # Aura externa amplia (resplandor suave rosado/durazno)
-        aura = QRadialGradient(0, 0, 110)
-        aura.setColorAt(0, QColor(255, 180, 150, int(80 * self._glow)))
-        aura.setColorAt(0.4, QColor(255, 150, 120, int(50 * self._glow)))
-        aura.setColorAt(0.7, QColor(230, 120, 100, int(30 * self._glow)))
-        aura.setColorAt(1, QColor(200, 100, 80, 0))
+        # Aura externa muy difusa (resplandor etéreo)
+        aura = QRadialGradient(0, 0, 120)
+        aura.setColorAt(0, QColor(255, 190, 160, int(70 * self._glow)))
+        aura.setColorAt(0.3, QColor(255, 160, 130, int(45 * self._glow)))
+        aura.setColorAt(0.6, QColor(240, 130, 110, int(25 * self._glow)))
+        aura.setColorAt(1, QColor(220, 100, 90, 0))
         painter.setBrush(QBrush(aura))
         painter.setPen(Qt.NoPen)
-        painter.drawEllipse(QRectF(-110, -70, 220, 140))
+        painter.drawEllipse(QRectF(-120, -80, 240, 160))
 
-        # Pétalos externos (capa 1) - más horizontales y grandes
+        # === CAPA 3: Pétalos más externos (aura suave) ===
+        for i in range(7):
+            painter.save()
+            var = self._petal_variations[i % len(self._petal_variations)]
+            angle = i * 51.4 + self._rotation * 0.2 + var[1]  # 360/7 ≈ 51.4
+            painter.rotate(angle)
+            painter.scale(var[0] * 1.15, var[0] * 1.15)
+
+            petal = self._draw_goetheanum_petal(painter, 1.0, var[2])
+
+            # Gradiente muy suave y translúcido
+            grad = QRadialGradient(35, 0, 55)
+            grad.setColorAt(0, QColor(255, 185, 155, int(90 + 30 * self._glow)))
+            grad.setColorAt(0.5, QColor(250, 160, 130, int(60 + 20 * self._glow)))
+            grad.setColorAt(1, QColor(240, 140, 115, int(30 + 10 * self._glow)))
+
+            painter.setBrush(QBrush(grad))
+            painter.setPen(Qt.NoPen)
+            painter.drawPath(petal)
+            painter.restore()
+
+        # === CAPA 2: Pétalos principales (8 pétalos con variación orgánica) ===
         for i in range(8):
             painter.save()
-            angle = i * 45 + self._rotation * 0.3
+            var = self._petal_variations[i]
+            angle = i * 45 + self._rotation * 0.3 + var[1]
             painter.rotate(angle)
+            painter.scale(var[0], var[0])
 
-            # Pétalo externo ancho y horizontal
-            petal = QPainterPath()
-            petal.moveTo(0, 0)
-            petal.cubicTo(30, -15, 70, -20, 90, -10)
-            petal.cubicTo(95, -5, 95, 5, 90, 10)
-            petal.cubicTo(70, 20, 30, 15, 0, 0)
+            petal = self._draw_goetheanum_petal(painter, 1.0, var[2])
 
-            # Gradiente del pétalo - salmón/durazno
-            grad = QRadialGradient(50, 0, 60)
-            grad.setColorAt(0, QColor(255, 200, 170, int(180 + 50 * self._glow)))
-            grad.setColorAt(0.5, QColor(245, 170, 140, int(160 + 40 * self._glow)))
-            grad.setColorAt(1, QColor(230, 140, 110, int(100 + 30 * self._glow)))
+            # Gradiente salmón/durazno orgánico
+            grad = QRadialGradient(38, 0, 55)
+            grad.setColorAt(0, QColor(255, 210, 180, int(170 + 50 * self._glow)))
+            grad.setColorAt(0.4, QColor(250, 180, 150, int(150 + 40 * self._glow)))
+            grad.setColorAt(0.8, QColor(240, 155, 125, int(100 + 30 * self._glow)))
+            grad.setColorAt(1, QColor(230, 140, 115, int(50 + 20 * self._glow)))
 
             painter.setBrush(QBrush(grad))
-            painter.setPen(QPen(QColor(220, 150, 120, 60), 0.5))
+            painter.setPen(QPen(QColor(255, 200, 170, 40), 0.8))
             painter.drawPath(petal)
             painter.restore()
 
-        # Pétalos internos (capa 2) - más pequeños
+        # === CAPA 1: Pétalos internos (6 pétalos tipo capullo redondeado) ===
         for i in range(6):
             painter.save()
-            angle = i * 60 + 30 + self._rotation * 0.5
+            var = self._petal_variations[i % len(self._petal_variations)]
+            angle = i * 60 + 25 + self._rotation * 0.5 + var[1] * 0.5
             painter.rotate(angle)
+            painter.scale(var[0] * 0.7, var[0] * 0.7)
 
+            # Pétalo interno más redondeado tipo capullo
             petal = QPainterPath()
             petal.moveTo(0, 0)
-            petal.cubicTo(15, -10, 40, -12, 55, -6)
-            petal.cubicTo(60, 0, 55, 6, 55, 6)
-            petal.cubicTo(40, 12, 15, 10, 0, 0)
+            petal.cubicTo(10, -15, 25, -22, 38, -16)
+            petal.cubicTo(48, -10, 50, 0, 48, 10)
+            petal.cubicTo(42, 20, 25, 22, 12, 15)
+            petal.cubicTo(5, 8, 2, 3, 0, 0)
 
-            grad = QRadialGradient(30, 0, 40)
-            grad.setColorAt(0, QColor(255, 220, 195, int(200 + 55 * self._glow)))
-            grad.setColorAt(0.6, QColor(250, 190, 160, int(180 + 50 * self._glow)))
-            grad.setColorAt(1, QColor(240, 160, 130, int(120 + 40 * self._glow)))
+            grad = QRadialGradient(28, 0, 40)
+            grad.setColorAt(0, QColor(255, 230, 210, int(200 + 55 * self._glow)))
+            grad.setColorAt(0.5, QColor(255, 205, 180, int(180 + 50 * self._glow)))
+            grad.setColorAt(1, QColor(250, 175, 150, int(120 + 40 * self._glow)))
 
             painter.setBrush(QBrush(grad))
-            painter.setPen(QPen(QColor(230, 170, 140, 50), 0.5))
+            painter.setPen(QPen(QColor(255, 220, 195, 35), 0.5))
             painter.drawPath(petal)
             painter.restore()
 
-        # Centro brillante intenso
-        centro = QRadialGradient(0, 0, 35)
-        centro.setColorAt(0, QColor(255, 255, 250, int(255 * self._glow)))
-        centro.setColorAt(0.3, QColor(255, 250, 235, int(230 * self._glow)))
-        centro.setColorAt(0.6, QColor(255, 230, 200, int(180 * self._glow)))
-        centro.setColorAt(1, QColor(255, 200, 160, int(100 * self._glow)))
-        painter.setBrush(QBrush(centro))
+        # === CENTRO: Múltiples capas difusas tipo flor acuática ===
+        # Capa externa del centro
+        centro_ext = QRadialGradient(0, 0, 45)
+        centro_ext.setColorAt(0, QColor(255, 245, 235, int(200 * self._glow)))
+        centro_ext.setColorAt(0.4, QColor(255, 235, 215, int(150 * self._glow)))
+        centro_ext.setColorAt(0.7, QColor(255, 220, 190, int(100 * self._glow)))
+        centro_ext.setColorAt(1, QColor(255, 200, 170, 0))
+        painter.setBrush(QBrush(centro_ext))
         painter.setPen(Qt.NoPen)
-        painter.drawEllipse(QRectF(-30, -25, 60, 50))
+        painter.drawEllipse(QRectF(-40, -32, 80, 64))
 
-        # Punto central ultra brillante
-        punto = QRadialGradient(0, 0, 12)
+        # Capa media del centro
+        centro_mid = QRadialGradient(0, 0, 30)
+        centro_mid.setColorAt(0, QColor(255, 255, 250, int(255 * self._glow)))
+        centro_mid.setColorAt(0.3, QColor(255, 252, 242, int(230 * self._glow)))
+        centro_mid.setColorAt(0.6, QColor(255, 245, 225, int(180 * self._glow)))
+        centro_mid.setColorAt(1, QColor(255, 230, 200, int(80 * self._glow)))
+        painter.setBrush(QBrush(centro_mid))
+        painter.drawEllipse(QRectF(-28, -22, 56, 44))
+
+        # Núcleo brillante interior
+        centro_core = QRadialGradient(0, 0, 18)
+        centro_core.setColorAt(0, QColor(255, 255, 255, 255))
+        centro_core.setColorAt(0.4, QColor(255, 253, 248, 240))
+        centro_core.setColorAt(0.7, QColor(255, 248, 235, 180))
+        centro_core.setColorAt(1, QColor(255, 240, 220, 0))
+        painter.setBrush(QBrush(centro_core))
+        painter.drawEllipse(QRectF(-15, -12, 30, 24))
+
+        # Punto central luminoso
+        punto = QRadialGradient(0, 0, 8)
         punto.setColorAt(0, QColor(255, 255, 255, 255))
-        punto.setColorAt(0.5, QColor(255, 250, 240, 200))
-        punto.setColorAt(1, QColor(255, 240, 220, 0))
+        punto.setColorAt(0.6, QColor(255, 252, 245, 200))
+        punto.setColorAt(1, QColor(255, 248, 235, 0))
         painter.setBrush(QBrush(punto))
-        painter.drawEllipse(QRectF(-10, -8, 20, 16))
+        painter.drawEllipse(QRectF(-6, -5, 12, 10))
 
     @pyqtProperty(float)
     def escala(self):
@@ -137,7 +205,7 @@ class FlorCentral(QGraphicsObject):
 
 
 class HojaCola(QGraphicsObject):
-    """Hoja flotante para elementos de la cola - más grande y translúcida."""
+    """Hoja flotante estilo Goetheanum - forma orgánica amorfa y translúcida."""
 
     def __init__(self, texto, subtexto="", posicion=QPointF(0, 0), escala=1.0, parent=None):
         super().__init__(parent)
@@ -151,67 +219,84 @@ class HojaCola(QGraphicsObject):
         self.setAcceptHoverEvents(True)
 
     def boundingRect(self):
-        return QRectF(-90, -40, 180, 80)
+        return QRectF(-95, -45, 190, 90)
 
     def paint(self, painter, option, widget):
         painter.setRenderHint(QPainter.Antialiasing)
 
-        # Glow externo suave
-        glow = QRadialGradient(0, 0, 85)
-        glow.setColorAt(0, QColor(100, 160, 180, int(60 * self._glow)))
-        glow.setColorAt(0.5, QColor(80, 140, 160, int(30 * self._glow)))
-        glow.setColorAt(1, QColor(60, 120, 140, 0))
+        # Glow externo muy difuso (aura etérea)
+        glow = QRadialGradient(0, 0, 95)
+        glow.setColorAt(0, QColor(90, 170, 185, int(55 * self._glow)))
+        glow.setColorAt(0.4, QColor(75, 150, 170, int(35 * self._glow)))
+        glow.setColorAt(0.7, QColor(60, 130, 155, int(18 * self._glow)))
+        glow.setColorAt(1, QColor(50, 110, 140, 0))
         painter.setBrush(QBrush(glow))
         painter.setPen(Qt.NoPen)
-        painter.drawEllipse(QRectF(-85, -50, 170, 100))
+        painter.drawEllipse(QRectF(-95, -55, 190, 110))
 
-        # Forma de hoja más orgánica y ondulante
+        # === Forma de hoja estilo Goetheanum - curvas amorfas sin ángulos ===
         path = QPainterPath()
-        path.moveTo(-75, 0)
-        path.cubicTo(-60, -25, -30, -32, 0, -28)
-        path.cubicTo(30, -25, 60, -20, 75, -8)
-        path.cubicTo(80, 0, 75, 8, 75, 8)
-        path.cubicTo(60, 20, 30, 25, 0, 28)
-        path.cubicTo(-30, 32, -60, 25, -75, 0)
+        # Inicio redondeado (no punta)
+        path.moveTo(-70, 5)
+        # Curva superior izquierda - ondulante y suave
+        path.cubicTo(-72, -8, -65, -22, -50, -28)
+        path.cubicTo(-30, -35, -10, -32, 10, -30)
+        # Curva superior derecha - asimétrica orgánica
+        path.cubicTo(35, -28, 55, -22, 68, -12)
+        # Punta derecha muy redondeada (tipo gota)
+        path.cubicTo(78, -5, 80, 5, 75, 12)
+        # Curva inferior derecha - ondulante
+        path.cubicTo(65, 22, 45, 30, 20, 32)
+        path.cubicTo(0, 34, -25, 32, -45, 28)
+        # Curva inferior izquierda - cierre suave
+        path.cubicTo(-60, 24, -70, 18, -72, 10)
+        # Cierre redondeado
+        path.cubicTo(-74, 6, -72, 2, -70, 5)
 
-        # Gradiente azul-verde etéreo más vibrante
-        grad = QLinearGradient(-75, 0, 75, 0)
-        alpha = int(140 * self._opacity + 80 * self._hover_glow)
-        grad.setColorAt(0, QColor(70, 130, 160, alpha))
-        grad.setColorAt(0.3, QColor(90, 155, 180, alpha + 20))
-        grad.setColorAt(0.5, QColor(100, 165, 190, alpha + 30))
-        grad.setColorAt(0.7, QColor(90, 155, 180, alpha + 20))
-        grad.setColorAt(1, QColor(70, 130, 160, alpha))
+        # Gradiente azul-verde orgánico con múltiples tonos
+        grad = QRadialGradient(5, 0, 75)
+        alpha = int(150 * self._opacity + 70 * self._hover_glow)
+        grad.setColorAt(0, QColor(100, 175, 195, alpha + 25))
+        grad.setColorAt(0.3, QColor(85, 160, 185, alpha + 15))
+        grad.setColorAt(0.6, QColor(75, 145, 175, alpha))
+        grad.setColorAt(1, QColor(65, 130, 165, alpha - 20))
 
         painter.setBrush(QBrush(grad))
-        painter.setPen(QPen(QColor(130, 190, 210, int(120 * self._opacity)), 1.5))
+        painter.setPen(QPen(QColor(140, 200, 220, int(90 * self._opacity)), 1.2))
         painter.drawPath(path)
 
-        # Nervadura central curva
+        # Nervadura central - curva orgánica ondulante
         nervadura = QPainterPath()
-        nervadura.moveTo(-60, 0)
-        nervadura.cubicTo(-30, -3, 30, 3, 60, 0)
-        painter.setPen(QPen(QColor(160, 210, 230, int(100 * self._opacity)), 1))
+        nervadura.moveTo(-55, 2)
+        nervadura.cubicTo(-30, -4, 0, 2, 30, -2)
+        nervadura.cubicTo(45, 0, 58, 3, 65, 0)
+        painter.setPen(QPen(QColor(165, 215, 235, int(85 * self._opacity)), 1.2))
         painter.drawPath(nervadura)
 
-        # Nervaduras secundarias
-        for offset in [-15, 15]:
+        # Nervaduras secundarias - curvas más orgánicas
+        nervs_data = [
+            (-40, -12, 0, -18, 35, -10),
+            (-35, 15, 5, 20, 40, 12),
+        ]
+        for x1, y1, x2, y2, x3, y3 in nervs_data:
             nerv = QPainterPath()
-            nerv.moveTo(-40, offset * 0.3)
-            nerv.cubicTo(-20, offset * 0.8, 20, offset * 0.8, 40, offset * 0.3)
-            painter.setPen(QPen(QColor(150, 200, 220, int(60 * self._opacity)), 0.5))
+            nerv.moveTo(x1, y1 * 0.6)
+            nerv.cubicTo(x1 + 15, y1, x2, y2, x3, y3 * 0.5)
+            painter.setPen(QPen(QColor(155, 205, 225, int(50 * self._opacity)), 0.6))
             painter.drawPath(nerv)
 
-        # Texto principal
-        painter.setPen(QColor(240, 240, 235, int(255 * self._opacity)))
+        # Texto principal con sombra sutil
+        painter.setPen(QColor(30, 50, 60, int(80 * self._opacity)))
         painter.setFont(QFont("Sans Serif", 10))
-        painter.drawText(QRectF(-70, -15, 140, 20), Qt.AlignCenter, self.texto)
+        painter.drawText(QRectF(-69, -13, 140, 20), Qt.AlignCenter, self.texto)
+        painter.setPen(QColor(245, 248, 250, int(255 * self._opacity)))
+        painter.drawText(QRectF(-70, -14, 140, 20), Qt.AlignCenter, self.texto)
 
         # Subtexto
         if self.subtexto:
-            painter.setPen(QColor(200, 210, 220, int(180 * self._opacity)))
+            painter.setPen(QColor(210, 225, 235, int(180 * self._opacity)))
             painter.setFont(QFont("Sans Serif", 8))
-            painter.drawText(QRectF(-70, 5, 140, 16), Qt.AlignCenter, self.subtexto)
+            painter.drawText(QRectF(-70, 6, 140, 16), Qt.AlignCenter, self.subtexto)
 
     @pyqtProperty(float)
     def glow(self):
