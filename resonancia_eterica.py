@@ -14,7 +14,8 @@ from PyQt5.QtCore import (Qt, QRectF, QPointF, QPropertyAnimation,
                           pyqtProperty, QEasingCurve, QTimer, QSequentialAnimationGroup)
 from PyQt5.QtGui import (QPainter, QBrush, QColor, QRadialGradient,
                          QLinearGradient, QPen, QPainterPath, QFont,
-                         QFontDatabase, QPolygonF)
+                         QFontDatabase, QPolygonF, QPixmap)
+import os
 
 
 class FlorCentral(QGraphicsObject):
@@ -800,21 +801,25 @@ class ResonanciaEterica(QGraphicsView):
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
-        # Escena
-        self.scene = QGraphicsScene(-500, -380, 1000, 760)
+        # Escena 720p (1280x720)
+        self.scene = QGraphicsScene(-640, -360, 1280, 720)
         self.setScene(self.scene)
-        self.resize(1000, 760)
+        self.resize(1280, 720)
 
         # Construir interfaz
-        self.crear_fondo()
-        self.crear_titulo()
-        self.crear_marco_organico()
+        self.crear_fondo()  # Imagen PNG de fondo
+        # Elementos estáticos ya en la imagen (comentados):
+        # self.crear_titulo()
+        # self.crear_marco_organico()
+        # self.crear_barra_tierra()  # Solo la tierra estática
+
+        # Elementos interactivos/animados sobre la imagen
         self.crear_busqueda()
         self.crear_rama_vertical()
         self.crear_flor_central()
         self.crear_cola_canciones()
         self.crear_cometa_progreso()
-        self.crear_barra_tierra()
+        self.crear_planta_inferior()  # Planta animada separada
         self.crear_panel_atajos()
         self.crear_estrella_decorativa()
 
@@ -822,16 +827,28 @@ class ResonanciaEterica(QGraphicsView):
         self.iniciar_animaciones()
 
     def crear_fondo(self):
-        """Fondo base oscuro."""
-        fondo_path = QPainterPath()
-        fondo_path.addRect(-500, -380, 1000, 760)
+        """Fondo con imagen PNG - 720p."""
+        # Cargar la imagen de fondo
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        imagen_path = os.path.join(script_dir, "Gemini_Generated_Image_4rngoi4rngoi4rng.png")
 
-        grad_fondo = QRadialGradient(0, 0, 500)
-        grad_fondo.setColorAt(0, QColor(20, 25, 50))
-        grad_fondo.setColorAt(0.5, QColor(15, 20, 40))
-        grad_fondo.setColorAt(1, QColor(10, 12, 25))
-
-        self.scene.addPath(fondo_path, QPen(Qt.NoPen), QBrush(grad_fondo))
+        if os.path.exists(imagen_path):
+            pixmap = QPixmap(imagen_path)
+            # Escalar la imagen a 720p exacto
+            pixmap = pixmap.scaled(1280, 720, Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
+            pixmap_item = self.scene.addPixmap(pixmap)
+            # Centrar la imagen en la escena (origen en -640, -360)
+            pixmap_item.setPos(-640, -360)
+            pixmap_item.setZValue(-100)  # Asegurar que esté detrás de todo
+        else:
+            # Fondo de respaldo si no existe la imagen
+            fondo_path = QPainterPath()
+            fondo_path.addRect(-640, -360, 1280, 720)
+            grad_fondo = QRadialGradient(0, 0, 640)
+            grad_fondo.setColorAt(0, QColor(20, 25, 50))
+            grad_fondo.setColorAt(0.5, QColor(15, 20, 40))
+            grad_fondo.setColorAt(1, QColor(10, 12, 25))
+            self.scene.addPath(fondo_path, QPen(Qt.NoPen), QBrush(grad_fondo))
 
     def crear_titulo(self):
         """Título elegante arriba del marco."""
@@ -980,38 +997,38 @@ class ResonanciaEterica(QGraphicsView):
             }
         """)
         proxy = self.scene.addWidget(self.input_busqueda)
-        proxy.setPos(-330, -275)
+        proxy.setPos(-350, -245)
 
     def crear_rama_vertical(self):
         """Rama que crece verticalmente desde el centro."""
         self.rama = RamaVertical()
-        self.rama.setPos(60, -90)
+        self.rama.setPos(0, -80)  # Centrada arriba
         self.scene.addItem(self.rama)
 
     def crear_flor_central(self):
         """Flor central - canción actual."""
         self.flor = FlorCentral()
-        self.flor.setPos(-20, 60)
+        self.flor.setPos(0, 70)  # Centro, ligeramente abajo
         self.scene.addItem(self.flor)
 
-        # Texto de canción actual
-        self.texto_cancion = self.scene.addText("Canción Actual",
-            QFont("Sans Serif", 12))
-        self.texto_cancion.setDefaultTextColor(QColor(240, 235, 220, 220))
-        self.texto_cancion.setPos(-65, 55)
-
-        self.texto_subtitulo = self.scene.addText("(Euritmia)",
-            QFont("Sans Serif", 9))
-        self.texto_subtitulo.setDefaultTextColor(QColor(200, 195, 180, 180))
-        self.texto_subtitulo.setPos(-35, 80)
+        # Texto de canción actual (ya está en la imagen, comentado)
+        # self.texto_cancion = self.scene.addText("Canción Actual",
+        #     QFont("Sans Serif", 12))
+        # self.texto_cancion.setDefaultTextColor(QColor(240, 235, 220, 220))
+        # self.texto_cancion.setPos(-50, 65)
+        # self.texto_subtitulo = self.scene.addText("(Euritmia)",
+        #     QFont("Sans Serif", 9))
+        # self.texto_subtitulo.setDefaultTextColor(QColor(200, 195, 180, 180))
+        # self.texto_subtitulo.setPos(-30, 90)
 
     def crear_cola_canciones(self):
         """Hojas flotantes representando la cola."""
+        # Posiciones ajustadas a la imagen 720p
         canciones = [
-            ("Canción Anterior", "(Euritmia)", QPointF(-280, 20), 0.85),
-            ("Canción Anterior", "(Euritmia)", QPointF(-220, 120), 0.75),
-            ("Canción Actual", "(Euritmia)", QPointF(200, 10), 0.9),
-            ("Canción Actual", "(Euritmia)", QPointF(280, 100), 0.8),
+            ("Canción Anterior", "(Euritmia)", QPointF(-380, 50), 0.85),   # Izq lejana
+            ("Canción Anterior", "(Euritmia)", QPointF(-200, 70), 0.80),   # Izq cercana
+            ("Canción Actual", "(Euritmia)", QPointF(200, 70), 0.80),      # Der cercana
+            ("Canción Actual", "(Euritmia)", QPointF(380, 50), 0.85),      # Der lejana
         ]
 
         self.hojas_cola = []
@@ -1024,9 +1041,15 @@ class ResonanciaEterica(QGraphicsView):
     def crear_cometa_progreso(self):
         """Barra de progreso como cometa con estela."""
         self.cometa = CometaProgreso()
-        self.cometa.setPos(0, 175)
+        self.cometa.setPos(0, 200)  # Zona de controles inferior
         self.cometa.progress = 0.35  # Progreso demo
         self.scene.addItem(self.cometa)
+
+    def crear_planta_inferior(self):
+        """Planta bioluminiscente animada en la parte inferior."""
+        self.planta = PlantaBioluminiscente()
+        self.planta.setPos(0, 300)  # Sobre la tierra, abajo
+        self.scene.addItem(self.planta)
 
     def crear_barra_tierra(self):
         """Barra inferior - conexión con la tierra."""
@@ -1063,13 +1086,14 @@ class ResonanciaEterica(QGraphicsView):
     def crear_panel_atajos(self):
         """Panel lateral de atajos."""
         self.panel_atajos = PanelAtajos()
-        self.panel_atajos.setPos(320, -160)
+        self.panel_atajos.setPos(480, -100)  # Derecha, centrado verticalmente
         self.scene.addItem(self.panel_atajos)
 
     def crear_estrella_decorativa(self):
-        """Estrella decorativa en esquina inferior derecha."""
+        """Estrella decorativa arriba a la derecha."""
         self.estrella = EstrellaDecorativa()
-        self.estrella.setPos(430, 320)
+        self.estrella.setPos(560, -280)  # Esquina superior derecha
+        self.estrella.setScale(0.6)  # Más pequeña
         self.scene.addItem(self.estrella)
 
     def iniciar_animaciones(self):
